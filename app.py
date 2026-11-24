@@ -261,6 +261,12 @@ with tab_overlap:
         index=["auto", "name", "factsheet"].index(st.session_state.get("lt_tier", "auto")),
         format_func=lambda t: TIER_LABEL[t], horizontal=True, key="lt_tier",
     )
+    if st.button("↻ Reload sources", key="reload_lt",
+                 help="Re-read source URLs from disk and re-fetch all name-level "
+                      "holdings. Use after a transient fetch failure."):
+        cached_lookthrough.clear()
+        st.session_state.pop("sources_seed", None)
+        st.rerun()
 
     # --- per-fund holdings-source URLs (global; persisted to data/sources.csv) ---
     with st.expander("Holdings source URLs (iShares 'Detailed Holdings' CSV)"):
