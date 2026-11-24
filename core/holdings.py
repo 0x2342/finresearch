@@ -44,19 +44,41 @@ _CASH_ASSET = {"Cash", "FX", "Futures", "Cash Collateral and Margins"}
 _CASH_SECTOR = {"Cash and/or Derivatives"}
 
 
-def _read_text(source: str) -> str | None:
-    try:
-        if source.startswith(("http://", "https://")):
-            import requests
+def _read_text(source: str):
+    """Return (text, error). error is None on success, else a short reason string.
 
-            return requests.get(source, timeout=60, headers={"User-Agent": "Mozilla/5.0"}).text
-        path = source[7:] if source.startswith("file://") else source
+    HTTP: 120s timeout (the Global Aggregate holdings payload is ~20k rows) and one
+    retry on a 5xx / network error, since the API 500s intermittently under load.
+    """
+    if source.startswith(("http://", "https://")):
+        import time
+
+        try:
+            import requests
+        except Exception:
+            return None, "requests unavailable"
+        last = "no response"
+        for attempt in range(2):
+            try:
+                r = requests.get(source, timeout=120, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200:
+                    return r.text, None
+                last = f"HTTP {r.status_code}"
+                if r.status_code < 500:
+                    break
+            except Exception as e:
+                last = type(e).__name__
+            if attempt == 0:
+                time.sleep(2)
+        return None, last
+    path = source[7:] if source.startswith("file://") else source
+    try:
         if os.path.exists(path):
             with open(path, encoding="utf-8-sig") as f:
-                return f.read()
-    except Exception:
-        return None
-    return None
+                return f.read(), None
+        return None, "file not found"
+    except Exception as e:
+        return None, type(e).__name__
 
 
 def _accumulate(names, weights, sectors, locations, assets):
@@ -154,9 +176,27 @@ def _parse_csv(text: str) -> dict | None:
     return out if out["names"] else None
 
 
-def load(source: str) -> dict | None:
-    """Return normalized look-through for a holdings URL or path. None on failure."""
-    text = _read_text(source)
-    if not text:
-        return None
-    return _parse_json(text) if text.lstrip().startswith("{") else _parse_csv(text)
+def load(source: str) -> dict:
+    """Normalized look-through for a holdings URL/path.
+
+    On success returns {"names", "sectors", "countries", "as_of", "n"}.
+    On failure returns {"error": "<reason>"} so callers can surface why.
+    """
+    text, err = _read_text(source)
+    if text is None:
+        return {"error": err or "fetch failed"}
+    if text.lstrip().startswith("{"):
+        parsed = _parse_json(text)
+        if parsed and parsed.get("names"):
+            return parsed
+        try:  # recognise the iShares error-JSON body
+            d = json.loads(text)
+            if isinstance(d, dict) and d.get("error"):
+                return {"error": f"API: {d.get('error')}"}
+        except Exception:
+            pass
+        return {"error": "no holdings in response"}
+    parsed = _parse_csv(text)
+    if parsed and parsed.get("names"):
+        return parsed
+    return {"error": "could not parse holdings"}

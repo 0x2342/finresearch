@@ -311,7 +311,8 @@ with tab_overlap:
     prov = pd.DataFrame([
         {"Fund": name_of.get(i, i), "Source": lts[i].source,
          "As of": lts[i].as_of or "—",
-         "Names": lts[i].n_names if lts[i].n_names else "—"}
+         "Names": lts[i].n_names if lts[i].n_names else "—",
+         "Note": lts[i].note or ""}
         for i in weights
     ])
     if not prov.empty:

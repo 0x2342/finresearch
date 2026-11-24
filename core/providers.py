@@ -24,25 +24,27 @@ class LookThrough:
     source: str = "none"          # "name-level" | "factsheet" | "none"
     as_of: str | None = None
     n_names: int | None = None
+    note: str | None = None       # failure reason when name-level was attempted
 
     def vector(self, dimension: str) -> dict[str, float]:
         return self.vectors.get(dimension, {})
 
 
-def _name_level(url: str) -> LookThrough | None:
+def _name_level(url: str):
+    """Return (LookThrough, None) on success, or (None, error_reason)."""
     h = holdings.load(url)
-    if not h or not h["names"]:
-        return None
-    return LookThrough(
-        vectors={
-            "Holdings (names)": h["names"],
-            "Sector": h["sectors"],
-            "Country": h["countries"],
-        },
-        source="name-level",
-        as_of=h.get("as_of"),
-        n_names=h["n"],
-    )
+    if h and h.get("names"):
+        return LookThrough(
+            vectors={
+                "Holdings (names)": h["names"],
+                "Sector": h["sectors"],
+                "Country": h["countries"],
+            },
+            source="name-level",
+            as_of=h.get("as_of"),
+            n_names=h["n"],
+        ), None
+    return None, (h.get("error") if isinstance(h, dict) else "fetch failed")
 
 
 def _factsheet(isin: str) -> LookThrough | None:
@@ -61,9 +63,16 @@ def _factsheet(isin: str) -> LookThrough | None:
 def resolve(isin: str, tier: str, source_url: str | None) -> LookThrough:
     """Look-through for one holding under the chosen tier."""
     if tier in ("auto", "name") and source_url:
-        lt = _name_level(source_url)
+        lt, err = _name_level(source_url)
         if lt is not None:
             return lt
+        if tier == "name":
+            return LookThrough(source="none", note=err)
+        fs = _factsheet(isin)  # auto -> fall back, but keep the reason
+        if fs is not None:
+            fs.note = err
+            return fs
+        return LookThrough(source="none", note=err)
     if tier == "name":
         return LookThrough(source="none")
     fs = _factsheet(isin)
