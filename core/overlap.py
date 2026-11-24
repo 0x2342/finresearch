@@ -91,3 +91,22 @@ def effective_weights(rows, mode: str, last_prices: dict[str, float]) -> dict[st
         return normalise(mv)
     manual = {r["ISIN"]: _to_float(r.get("Weight")) for r in rows}
     return normalise({k: v for k, v in manual.items() if v > 0})
+
+
+def portfolio_volume(rows, mode: str, last_prices: dict[str, float]) -> float:
+    """Total 'volume' of a portfolio under the shared weight source.
+
+    - "tracked":  Σ Units × last price (market value).
+    - "research": Σ raw Weight entries (un-normalised weight mass).
+    Used to measure each portfolio's share of a combined book (e.g. satellite
+    sizing). Both portfolios must use the same mode for the ratio to be valid.
+    """
+    if mode == "tracked":
+        total = 0.0
+        for r in rows:
+            units = _to_float(r.get("Units"))
+            price = last_prices.get(r.get("Ticker"))
+            if price and units:
+                total += units * float(price)
+        return total
+    return sum(_to_float(r.get("Weight")) for r in rows)

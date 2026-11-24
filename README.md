@@ -43,6 +43,16 @@ portfolio; a legacy single `data/portfolio.csv` is migrated into it automaticall
   guesses (two are confirmed: `ESWP.AS`, `FUJI.PA`); fix any that fail in the
   sidebar and the app re-fetches.
 
+## Allocation (satellite sizing)
+
+The **Allocation** tab combines two or more portfolios and measures each one's
+share of the combined book, so a satellite sleeve stays sensibly sized. Each
+portfolio's *volume* is `Σ Units × price` (tracked) or `Σ raw Weight` (research);
+contribution = volume ÷ combined total. Pick the core; the rest count as
+satellite, compared against a user "sensible max" (default 25%). All selected
+portfolios **must share the same weight source** — mixing tracked and research is
+blocked, since volume isn't comparable across modes.
+
 ## Price proxies & data coverage
 
 The `Ticker` for each holding is an **index proxy** for the correlation series,

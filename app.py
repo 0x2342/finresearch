@@ -170,8 +170,8 @@ last = panel.ffill().iloc[-1] if not panel.empty else pd.Series(dtype=float)
 
 weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
 
-tab_px, tab_corr, tab_overlap, tab_value = st.tabs(
-    ["Prices", "Correlation", "Look-through overlap", "Portfolio value"]
+tab_px, tab_corr, tab_overlap, tab_value, tab_alloc = st.tabs(
+    ["Prices", "Correlation", "Look-through overlap", "Portfolio value", "Allocation"]
 )
 
 # --------------------------------------------------------------------------- #
@@ -390,3 +390,102 @@ with tab_value:
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     st.metric("Portfolio value (priced units)", f"€ {total:,.2f}")
     st.caption("Enter Units per holding to value from live prices. Manual refresh only.")
+
+# --------------------------------------------------------------------------- #
+# Allocation — contribution of each portfolio to the combined book
+# --------------------------------------------------------------------------- #
+with tab_alloc:
+    st.caption(
+        "Combine portfolios (e.g. core + satellite) and measure each one's share "
+        "of total volume, so a satellite sleeve stays sensibly sized."
+    )
+    sel = st.multiselect(
+        "Portfolios", slugs, default=slugs[:2],
+        format_func=lambda s: name_by_slug.get(s, s), key="alloc_pick",
+    )
+    if len(sel) < 2:
+        st.info("Select at least two portfolios to compare.")
+    else:
+        sel_modes = {store.mode_of(idx, s) for s in sel}
+        if len(sel_modes) > 1:
+            st.error(
+                "All selected portfolios must use the same weight source "
+                f"(all Tracked or all Research) — mixed: {', '.join(sorted(sel_modes))}. "
+                "Volume isn't comparable across modes."
+            )
+        else:
+            m = sel_modes.pop()
+            c1, c2 = st.columns(2)
+            core_sel = c1.selectbox(
+                "Core portfolio", sel, format_func=lambda s: name_by_slug.get(s, s),
+                key="alloc_core",
+            )
+            thr = c2.number_input(
+                "Sensible max satellite (%)", min_value=1, max_value=100, value=25,
+                key="alloc_thr",
+            ) / 100.0
+
+            rows_by = {}
+            for s in sel:
+                dfp = store.load_portfolio(s)
+                rows_by[s] = dfp.to_dict("records") if dfp is not None else []
+
+            lastd = {}
+            if m == "tracked":
+                tks = tuple({
+                    str(r.get("Ticker", "")).strip()
+                    for rs in rows_by.values() for r in rs
+                    if str(r.get("Ticker", "")).strip()
+                })
+                pan = cached_panel(tks, period) if tks else pd.DataFrame()
+                lastd = (pan.ffill().iloc[-1].to_dict() if not pan.empty else {})
+
+            vols = {s: overlap.portfolio_volume(rows_by[s], m, lastd) for s in sel}
+            total = sum(vols.values())
+            if total <= 0:
+                st.warning(
+                    "Total volume is zero — "
+                    + ("enter Units and make sure tickers price (tracked mode)."
+                       if m == "tracked" else "enter Weights (research mode).")
+                )
+            else:
+                unit = "€" if m == "tracked" else "weight"
+                sat = sum(v for s, v in vols.items() if s != core_sel) / total
+                m1, m2 = st.columns(2)
+                m1.metric(
+                    "Satellite contribution", f"{sat:.1%}",
+                    delta=f"{(sat - thr):+.1%} vs {thr:.0%} limit", delta_color="inverse",
+                )
+                m2.metric(
+                    f"Combined volume ({unit})",
+                    f"{total:,.0f}" if m == "tracked" else f"{total:,.2f}",
+                )
+                if sat > thr:
+                    st.warning(
+                        f"Satellite is {sat:.1%} of the combined book — above your "
+                        f"{thr:.0%} limit. Trim the satellite or grow the core."
+                    )
+                else:
+                    st.success(f"Satellite is {sat:.1%} — within your {thr:.0%} limit.")
+
+                df = pd.DataFrame([
+                    {"Portfolio": name_by_slug.get(s, s), "Volume": round(vols[s], 2),
+                     "Contribution": vols[s] / total,
+                     "Role": "core" if s == core_sel else "satellite"}
+                    for s in sel
+                ]).sort_values("Contribution", ascending=False)
+
+                fig = px.bar(
+                    df, x="Contribution", y="Portfolio", orientation="h", color="Role",
+                    color_discrete_map={"core": "#1f4e79", "satellite": "#7fb3d5"},
+                )
+                fig.update_layout(
+                    height=max(220, 46 * len(df)), xaxis_tickformat=".0%",
+                    yaxis=dict(autorange="reversed"), margin=dict(l=0, r=0, t=10, b=0),
+                    yaxis_title="", xaxis_title="share of combined volume",
+                )
+                st.plotly_chart(fig, width="stretch")
+
+                show = df.copy()
+                show["Contribution"] = (show["Contribution"] * 100).round(1)
+                st.dataframe(show, width="stretch", hide_index=True)
