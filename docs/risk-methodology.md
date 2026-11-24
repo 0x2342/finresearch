@@ -32,12 +32,12 @@ With sample mean $\hat\mu = \frac1T\sum_{t=1}^T r_t$, the **variance** measures
 dispersion of returns around that mean, and **volatility** $\sigma$ is defined as
 its square root:
 
-$$ \operatorname{Var}(r) = \frac{1}{T-1}\sum_{t=1}^{T}\left(r_t-\hat\mu\right)^2,
+$$ \mathrm{Var}(r) = \frac{1}{T-1}\sum_{t=1}^{T}\left(r_t-\hat\mu\right)^2,
 \qquad
-\sigma = \sqrt{\operatorname{Var}(r)}
+\sigma = \sqrt{\mathrm{Var}(r)}
 = \sqrt{\frac{1}{T-1}\sum_{t=1}^{T}\left(r_t-\hat\mu\right)^2}. $$
 
-(So $\sigma^2 = \operatorname{Var}(r)$; the $\sigma^2$ notation used elsewhere is
+(So $\sigma^2 = \mathrm{Var}(r)$; the $\sigma^2$ notation used elsewhere is
 just shorthand for the variance.)
 
 $\sigma$ is in the same units as the return (here, per day). The $T-1$ (Bessel)
@@ -72,7 +72,7 @@ Let $\mathbf{w}=(w_1,\dots,w_n)^\top$ be the portfolio weights (fractions of
 capital, $\sum_i w_i = 1$). The portfolio return is the weighted sum
 $r_p = \mathbf{w}^\top\mathbf{r} = \sum_i w_i r^{(i)}$, so its variance is
 
-$$ \sigma_p^2 = \operatorname{Var}\!\left(\mathbf{w}^\top\mathbf{r}\right)
+$$ \sigma_p^2 = \mathrm{Var}\!\left(\mathbf{w}^\top\mathbf{r}\right)
 = \mathbf{w}^\top \Sigma\, \mathbf{w}
 = \sum_{i=1}^{n}\sum_{j=1}^{n} w_i w_j \Sigma_{ij},
 \qquad \sigma_p = \sqrt{\mathbf{w}^\top\Sigma\,\mathbf{w}}. $$
