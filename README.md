@@ -53,6 +53,26 @@ satellite, compared against a user "sensible max" (default 25%). All selected
 portfolios **must share the same weight source** — mixing tracked and research is
 blocked, since volume isn't comparable across modes.
 
+## Risk (volatility & contribution)
+
+The **Risk** tab computes annualized volatility from daily return covariance
+(`√(wᵀΣw) × √252`) and decomposes it. Select one portfolio for a single-book view
+or several (same weight source) to split risk **core vs satellite**. It shows:
+
+- **Annualized vol** (%), and for tracked books the **± annual € volatility**
+  (vol × priced capital).
+- **Diversification** = portfolio vol ÷ weighted-average standalone vol (<1 = benefit).
+- **Risk contribution by sleeve** — capital % vs risk % (a 25%-capital satellite
+  can be 40% of the risk).
+- **Risk contribution by holding** — each holding's share of total risk, which
+  sums to 100%, plus its standalone vol.
+
+Weights are `vol-share × within-portfolio weight` (sleeve-tagged); the % split is
+identical for tracked and research, tracked adds the € figures. `core/risk.py`
+renormalizes over the priced subset and reports `covered`; the window is set by
+the shortest-history ticker, and correlations rise toward 1 in a crash — so
+realised drawdown risk can exceed this.
+
 ## Price proxies & data coverage
 
 The `Ticker` for each holding is an **index proxy** for the correlation series,

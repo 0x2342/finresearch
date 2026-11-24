@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from core import exposures, overlap, prices, providers, registry, store
+from core import exposures, overlap, prices, providers, registry, risk, store
 
 st.set_page_config(page_title="Financial Research", layout="wide")
 
@@ -170,8 +170,8 @@ last = panel.ffill().iloc[-1] if not panel.empty else pd.Series(dtype=float)
 
 weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
 
-tab_px, tab_corr, tab_overlap, tab_value, tab_alloc = st.tabs(
-    ["Prices", "Correlation", "Look-through overlap", "Portfolio value", "Allocation"]
+tab_px, tab_corr, tab_overlap, tab_value, tab_alloc, tab_risk = st.tabs(
+    ["Prices", "Correlation", "Look-through overlap", "Portfolio value", "Allocation", "Risk"]
 )
 
 # --------------------------------------------------------------------------- #
@@ -489,3 +489,115 @@ with tab_alloc:
                 show = df.copy()
                 show["Contribution"] = (show["Contribution"] * 100).round(1)
                 st.dataframe(show, width="stretch", hide_index=True)
+
+# --------------------------------------------------------------------------- #
+# Risk — annualized volatility & risk contribution (sleeve + holding)
+# --------------------------------------------------------------------------- #
+with tab_risk:
+    st.caption(
+        "Annualized volatility (daily returns × √252) and risk contribution by "
+        "sleeve and holding. One portfolio for a single-book view, or several "
+        "(same weight source) to split risk core vs satellite."
+    )
+    rsel = st.multiselect(
+        "Portfolios", slugs, default=[active],
+        format_func=lambda s: name_by_slug.get(s, s), key="risk_pick",
+    )
+    if not rsel:
+        st.info("Select at least one portfolio.")
+    elif len({store.mode_of(idx, s) for s in rsel}) > 1:
+        st.error("All selected portfolios must use the same weight source.")
+    else:
+        rm = store.mode_of(idx, rsel[0])
+        rrows = {}
+        for s in rsel:
+            dfp = store.load_portfolio(s)
+            rrows[s] = dfp.to_dict("records") if dfp is not None else []
+        rtks = tuple({
+            str(r.get("Ticker", "")).strip()
+            for rs in rrows.values() for r in rs if str(r.get("Ticker", "")).strip()
+        })
+        rpanel = cached_panel(rtks, period) if rtks else pd.DataFrame()
+        rlast = rpanel.ffill().iloc[-1].to_dict() if not rpanel.empty else {}
+        vol = {s: overlap.portfolio_volume(rrows[s], rm, rlast) for s in rsel}
+        tvol = sum(vol.values())
+
+        if tvol <= 0 or rpanel.empty:
+            st.info("Need priced holdings (and Units in tracked mode) to measure risk.")
+        else:
+            tick_w, tick_sleeve, tick_name = {}, {}, {}
+            for s in rsel:
+                vshare = vol[s] / tvol
+                eff = overlap.effective_weights(rrows[s], rm, rlast)
+                tk = {r["ISIN"]: str(r.get("Ticker", "")).strip() for r in rrows[s]}
+                nn = {r["ISIN"]: (r.get("Name") or r["ISIN"]) for r in rrows[s]}
+                nm = name_by_slug.get(s, s)
+                for isin, w in eff.items():
+                    t, cw = tk.get(isin, ""), vshare * w
+                    if not t or cw <= 0:
+                        continue
+                    tick_w[t] = tick_w.get(t, 0.0) + cw
+                    tick_sleeve.setdefault(t, {})
+                    tick_sleeve[t][nm] = tick_sleeve[t].get(nm, 0.0) + cw
+                    tick_name.setdefault(t, nn.get(isin, t))
+
+            dec = risk.decompose(rpanel, tick_w)
+            if dec is None:
+                st.warning("Not enough overlapping price history to compute risk.")
+            else:
+                tracked = rm == "tracked"
+                eur_vol = dec["ann_vol"] * dec["covered"] * tvol   # € vol of priced capital
+
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Annualized volatility", f"{dec['ann_vol']:.1%}")
+                if tracked:
+                    c2.metric("± Annual € volatility", f"€ {eur_vol:,.0f}")
+                else:
+                    c2.metric("Priced coverage", f"{dec['covered']:.0%}")
+                c3.metric(
+                    "Diversification",
+                    f"{dec['ann_vol']/dec['wavg_vol']:.2f}×" if dec["wavg_vol"] else "—",
+                    help="portfolio vol ÷ weighted-average standalone vol (<1 = benefit)",
+                )
+                st.caption(
+                    f"{dec['obs']} daily obs · {dec['start'].date()} → {dec['end'].date()} "
+                    f"· priced coverage {dec['covered']:.0%}. Window is set by the "
+                    "shortest-history ticker; correlations rise toward 1 in a crash, so "
+                    "realised drawdown risk can exceed this."
+                )
+                if dec["obs"] < 60:
+                    st.warning(f"Only {dec['obs']} observations — volatility estimate is noisy.")
+
+                if len(rsel) >= 2:
+                    srisk = {}
+                    for t in dec["tickers"]:
+                        for sl, wv in tick_sleeve.get(t, {}).items():
+                            srisk[sl] = srisk.get(sl, 0.0) + dec["rc_frac"][t] * (wv / tick_w[t])
+                    srows = []
+                    for s in rsel:
+                        nm = name_by_slug.get(s, s)
+                        rk = srisk.get(nm, 0.0)
+                        row = {"Sleeve": nm, "Capital %": round(vol[s] / tvol * 100, 1),
+                               "Risk %": round(rk * 100, 1)}
+                        if tracked:
+                            row["Risk € (ann)"] = round(rk * eur_vol, 0)
+                        srows.append(row)
+                    st.markdown("**Risk contribution by sleeve** — is the satellite taking more risk than capital?")
+                    st.dataframe(pd.DataFrame(srows).sort_values("Risk %", ascending=False),
+                                 width="stretch", hide_index=True)
+
+                st.markdown("**Risk contribution by holding** (share of total portfolio risk).")
+                hdf = pd.DataFrame([
+                    {"Holding": tick_name.get(t, t), "Ticker": t,
+                     "Weight %": round(dec["w"][t] * 100, 1),
+                     "Risk %": round(dec["rc_frac"][t] * 100, 1),
+                     "Standalone vol": f"{dec['standalone'][t]:.0%}"}
+                    for t in dec["tickers"]
+                ]).sort_values("Risk %", ascending=False)
+                fig = px.bar(hdf.head(20), x="Risk %", y="Holding", orientation="h")
+                fig.update_layout(height=max(240, 26 * min(len(hdf), 20)),
+                                  yaxis=dict(autorange="reversed"),
+                                  margin=dict(l=0, r=0, t=10, b=0),
+                                  yaxis_title="", xaxis_title="% of total risk")
+                st.plotly_chart(fig, width="stretch")
+                st.dataframe(hdf, width="stretch", hide_index=True)
