@@ -17,6 +17,8 @@ For the prototype this is a static registry seeded with the core sleeve.
   (core/exposures.py), which is the blueprint's synthetic fallback.
 """
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass
 
 
@@ -70,21 +72,106 @@ _HOLDINGS_API = (
 )
 
 
-def holdings_api_url(inst: "Instrument") -> str | None:
-    """Build the get-product-data holdings URL for an instrument, if it has a product id."""
-    if not inst.product_id:
+def holdings_api_url_for(product_id: int | None, site: str = "uk-ishares",
+                         locale: str = "en_GB") -> str | None:
+    """Build a get-product-data holdings URL for a product id."""
+    if not product_id:
         return None
-    return _HOLDINGS_API.format(locale=inst.locale, pid=inst.product_id, site=inst.site)
+    return _HOLDINGS_API.format(locale=locale, pid=product_id, site=site)
 
 
-def source_for(isin: str, override: str | None = None) -> str | None:
-    """Resolve a holdings source: explicit override, else registry URL, else built API URL."""
+def holdings_api_url(inst: "Instrument") -> str | None:
+    return holdings_api_url_for(inst.product_id, inst.site, inst.locale)
+
+
+# --------------------------------------------------------------------------- #
+# Automatic ISIN -> index -> reference-fund resolution
+#
+# There is no free ISIN->index feed (index membership is licensed), so the index
+# comes from the curated registry, an explicit hint, or the fund's name. The
+# index then maps to a physical iShares reference fund (verified product ids).
+# --------------------------------------------------------------------------- #
+@dataclass
+class RefFund:
+    product_id: int
+    site: str = "uk-ishares"
+    locale: str = "en_GB"
+
+
+# canonical index name -> physical iShares reference fund
+INDEX_REF: dict[str, RefFund] = {
+    "S&P 500": RefFund(253743),
+    "STOXX Europe 600": RefFund(251931, "de-ishares", "en_DE"),
+    "MSCI Japan": RefFund(251866),
+    "MSCI Emerging Markets": RefFund(264659),
+    "Bloomberg Euro Corporate Bond": RefFund(251726),
+    "Bloomberg Global Aggregate (EUR-H)": RefFund(291770),
+}
+
+# substrings (normalised) that map a fund name / index hint to a canonical index.
+# Kept specific (euro-corp, not generic "corporate bond") to avoid mis-mapping.
+_INDEX_ALIASES: dict[str, list[str]] = {
+    "S&P 500": ["s&p 500", "s&p500", "sp 500", "sp500", "s and p 500"],
+    "STOXX Europe 600": ["stoxx europe 600", "stoxx 600", "stoxx600"],
+    "MSCI Japan": ["msci japan"],
+    "MSCI Emerging Markets": ["msci em ", "msci emerging markets"],
+    "Bloomberg Euro Corporate Bond": ["euro corp", "eur corp", "euro corporate", "core corp bond"],
+    "Bloomberg Global Aggregate (EUR-H)": ["global aggregate", "global agg"],
+}
+
+
+@dataclass
+class Reference:
+    product_id: int
+    site: str
+    locale: str
+    index: str
+    how: str          # 'registry' | 'index-hint' | 'name-match'
+
+
+def _norm_text(s: str) -> str:
+    return re.sub(r"[^a-z0-9& ]+", " ", str(s).lower()) + " "
+
+
+def match_index(text: str | None) -> str | None:
+    """Map a fund name or index hint to a canonical index name, or None."""
+    if not text:
+        return None
+    t = _norm_text(text)
+    for canon, aliases in _INDEX_ALIASES.items():
+        if any(a in t for a in aliases):
+            return canon
+    return None
+
+
+def resolve_reference(isin: str, name: str | None = None,
+                      index: str | None = None) -> Reference | None:
+    """Resolve a held ISIN to a physical iShares reference fund.
+
+    Priority: curated registry -> explicit index hint -> fund-name match. Returns
+    None when nothing matches (caller falls back to factsheet).
+    """
+    inst = REGISTRY.get(isin)
+    if inst and inst.product_id:
+        return Reference(inst.product_id, inst.site, inst.locale, inst.index, "registry")
+    canon, how = match_index(index), "index-hint"
+    if not canon:
+        canon, how = match_index(name), "name-match"
+    if canon and canon in INDEX_REF:
+        r = INDEX_REF[canon]
+        return Reference(r.product_id, r.site, r.locale, canon, how)
+    return None
+
+
+def source_for(isin: str, override: str | None = None, name: str | None = None) -> str | None:
+    """Resolve a holdings source: override -> registry -> auto-resolved reference."""
     if override:
         return override
     inst = REGISTRY.get(isin)
-    if not inst:
-        return None
-    return inst.holdings_url or holdings_api_url(inst)
+    if inst:
+        return inst.holdings_url or holdings_api_url(inst)
+    ref = resolve_reference(isin, name=name)
+    return holdings_api_url_for(ref.product_id, ref.site, ref.locale) if ref else None
 
 # Capital split from core-portfolio-risk-overlap.md (12.5% each equity, 25% each bond)
 DEFAULT_WEIGHTS: dict[str, float] = {

@@ -138,9 +138,32 @@ like Global Aggregate stays low vs equities because it genuinely is government d
 | `core/overlap.py` | Overlap engine (weight overlap, pairwise, portfolio aggregate) |
 | `app.py` | Streamlit UI |
 
+## Reference-fund resolution
+
+A held ISIN resolves to a physical iShares reference fund (whose holdings drive
+name-level look-through) via `registry.resolve_reference`, in priority order:
+
+1. **registry** — the curated `REGISTRY` entries (verified product ids).
+2. **index hint** — an explicit canonical index name.
+3. **name match** — the fund's own Name matched against `_INDEX_ALIASES`.
+
+The matched index then maps to a reference fund through `INDEX_REF` (index →
+verified iShares product id). So adding a new fund named e.g. "Xtrackers MSCI
+Japan UCITS ETF" auto-resolves to the iShares MSCI Japan reference and enables
+name-level with no registry edit. The provenance panel's **Reference** column
+shows each fund's resolved index and how (`registry` / `index-hint` /
+`name-match`), or `—` when unresolved (→ factsheet).
+
+There is **no free `ISIN → index` feed** (index membership is licensed), so the
+index comes from the registry, a hint, or the name — not the ISIN itself.
+`INDEX_REF` currently covers the six core indices; extend it (and `_INDEX_ALIASES`)
+to widen coverage. A future upgrade is to back this with the iShares
+product-screener catalog, which would resolve any iShares ISIN directly and
+auto-populate `INDEX_REF`.
+
 ## Next (deferred per blueprint)
 
-- Automatic `ISIN → index-variant → reference-fund` resolution (today the
-  reference fund's holdings URL is supplied per fund, not derived).
+- Back the resolver with the iShares product-screener catalog (direct ISIN→index
+  for iShares funds; auto-populated `INDEX_REF`).
 - Cross-portfolio comparison (tracked book vs research candidate).
 - Constituent-level price correlation; optimisation; auto-refresh.

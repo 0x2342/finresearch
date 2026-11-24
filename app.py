@@ -276,7 +276,7 @@ with tab_overlap:
             rws, seen = [], set()
             for i in pf["ISIN"]:
                 seen.add(i)
-                dflt = registry.source_for(i) or ""
+                dflt = registry.source_for(i, name=name_of.get(i)) or ""
                 rws.append({"ISIN": i, "Name": name_of.get(i, i), "Source URL": saved.get(i, dflt)})
             for i, u in saved.items():
                 if i not in seen:
@@ -297,7 +297,7 @@ with tab_overlap:
         st.session_state["sources_snap"] = str(sources_map)
 
     def source_of(i):
-        return registry.source_for(i, sources_map.get(i))
+        return registry.source_for(i, sources_map.get(i), name_of.get(i))
 
     dim = st.radio("Dimension", DIMS, horizontal=True, key=f"dim::{active}")
 
@@ -308,8 +308,12 @@ with tab_overlap:
     held = {i: lts[i].vector(dim) for i in weights if lts[i].vector(dim)}
     uncovered = [name_of.get(i, i) for i in weights if not lts[i].vector(dim)]
 
+    def _ref_label(i):
+        r = registry.resolve_reference(i, name_of.get(i))
+        return f"{r.index} · {r.how}" if r else "—"
+
     prov = pd.DataFrame([
-        {"Fund": name_of.get(i, i), "Source": lts[i].source,
+        {"Fund": name_of.get(i, i), "Reference": _ref_label(i), "Source": lts[i].source,
          "As of": lts[i].as_of or "—",
          "Names": lts[i].n_names if lts[i].n_names else "—",
          "Note": lts[i].note or ""}
