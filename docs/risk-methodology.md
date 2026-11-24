@@ -29,10 +29,16 @@ scale-free, so they can be pooled statistically and compared across instruments.
 ### 1.2 Volatility = standard deviation of returns
 
 With sample mean $\hat\mu = \frac1T\sum_{t=1}^T r_t$, the **variance** measures
-dispersion of returns around that mean, and **volatility** is its square root:
+dispersion of returns around that mean, and **volatility** $\sigma$ is defined as
+its square root:
 
-$$ \sigma^2 = \frac{1}{T-1}\sum_{t=1}^{T}\left(r_t-\hat\mu\right)^2,
-\qquad \sigma = \sqrt{\sigma^2}. $$
+$$ \operatorname{Var}(r) = \frac{1}{T-1}\sum_{t=1}^{T}\left(r_t-\hat\mu\right)^2,
+\qquad
+\sigma = \sqrt{\operatorname{Var}(r)}
+= \sqrt{\frac{1}{T-1}\sum_{t=1}^{T}\left(r_t-\hat\mu\right)^2}. $$
+
+(So $\sigma^2 = \operatorname{Var}(r)$; the $\sigma^2$ notation used elsewhere is
+just shorthand for the variance.)
 
 $\sigma$ is in the same units as the return (here, per day). The $T-1$ (Bessel)
 denominator makes it an unbiased sample estimator; pandas `.cov()` uses it.
