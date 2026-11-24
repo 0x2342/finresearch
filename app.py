@@ -67,7 +67,7 @@ name_by_slug = {p["slug"]: p["name"] for p in idx["portfolios"]}
 active = idx.get("active") if idx.get("active") in slugs else slugs[0]
 mode = store.mode_of(idx, active)
 
-st.title("Financial Research — Prototype")
+st.title("Financial Research")
 st.caption(
     "Look-through overlap + price correlation. Track a real book (weights from "
     "units × price) or research a hypothetical one (weights from the Weight column)."
