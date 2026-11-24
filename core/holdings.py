@@ -1,10 +1,15 @@
-"""Name-level look-through from a BlackRock / iShares 'Detailed Holdings' CSV.
+"""Name-level look-through from iShares holdings data.
 
-`source` may be an http(s) URL (the iShares product-page "Detailed Holdings"
-download) or a local file path (used for tests/fixtures). The CSV has a few
-metadata rows, then a table whose header carries a "Weight (%)" column; we parse
-that table into a name -> weight vector and aggregate it up to sector / country
-so a single name-level source can serve every look-through dimension.
+Two input shapes, auto-detected:
+  - the iShares `get-product-data` JSON API (component=holdings.all) — the
+    reliable source; column-oriented parallel arrays under
+    componentsByNameMap.holdings.containersByNameMap.all.dataPointsByNameMap.
+  - a BlackRock "Detailed Holdings" CSV (kept as a fallback / for fixtures).
+
+`source` may be an http(s) URL or a local file path. `load()` returns a dict:
+  {"names": {...}, "sectors": {...}, "countries": {...}, "as_of": str|None, "n": int}
+with weights as fractions of the fund, cash/derivatives excluded, sector/country
+aggregated up from the per-holding fields.
 
 Physical funds only: a swap fund's own file is a substitute basket, so the
 resolver (core/providers) points a swap holding at a physical reference fund.
@@ -12,11 +17,12 @@ resolver (core/providers) points a swap holding at a physical reference fund.
 from __future__ import annotations
 
 import io
+import json
 import os
 
 import pandas as pd
 
-# Country name (BlackRock "Location") -> ISO alpha-2, to match factsheet vectors.
+# BlackRock "Location" / countryOfRisk -> ISO alpha-2, to match factsheet vectors.
 _COUNTRY = {
     "United States": "US", "Taiwan": "TW", "Korea (South)": "KR", "South Korea": "KR",
     "China": "CN", "Hong Kong": "CN", "India": "IN", "Japan": "JP",
@@ -31,13 +37,11 @@ _COUNTRY = {
     "United Arab Emirates": "AE", "Hungary": "HU", "Peru": "PE",
     "Czech Republic": "CZ", "Egypt": "EG", "Colombia": "CO", "New Zealand": "NZ",
 }
-# Light sector normalisation to the GICS labels used by the factsheet vectors.
-_SECTOR = {
-    "Communication": "Communication Services",
-    "Information Technology": "Information Technology",
-    "Health Care": "Health Care", "Consumer Discretionary": "Consumer Discretionary",
-    "Consumer Staples": "Consumer Staples",
-}
+# Normalise iShares sector labels to the GICS names used by factsheet vectors.
+_SECTOR = {"Communication": "Communication Services"}
+# Rows that are not real securities (excluded from look-through).
+_CASH_ASSET = {"Cash", "FX", "Futures", "Cash Collateral and Margins"}
+_CASH_SECTOR = {"Cash and/or Derivatives"}
 
 
 def _read_text(source: str) -> str | None:
@@ -45,7 +49,7 @@ def _read_text(source: str) -> str | None:
         if source.startswith(("http://", "https://")):
             import requests
 
-            return requests.get(source, timeout=30, headers={"User-Agent": "Mozilla/5.0"}).text
+            return requests.get(source, timeout=60, headers={"User-Agent": "Mozilla/5.0"}).text
         path = source[7:] if source.startswith("file://") else source
         if os.path.exists(path):
             with open(path, encoding="utf-8-sig") as f:
@@ -55,14 +59,64 @@ def _read_text(source: str) -> str | None:
     return None
 
 
-def fetch(source: str) -> pd.DataFrame | None:
-    """Parse a holdings CSV from URL or path. None on failure. as-of in .attrs."""
-    txt = _read_text(source)
-    if not txt:
+def _accumulate(names, weights, sectors, locations, assets):
+    nm: dict[str, float] = {}
+    sec: dict[str, float] = {}
+    ctry: dict[str, float] = {}
+    for i, raw_name in enumerate(names):
+        w = weights[i] if i < len(weights) else None
+        if w in (None, ""):
+            continue
+        try:
+            wf = float(w) / 100.0
+        except (TypeError, ValueError):
+            continue
+        if wf <= 0:
+            continue
+        asset = str(assets[i]) if assets and i < len(assets) and assets[i] else ""
+        s_raw = str(sectors[i]) if sectors and i < len(sectors) and sectors[i] else ""
+        if asset in _CASH_ASSET or s_raw in _CASH_SECTOR:
+            continue
+        name = str(raw_name).strip() if raw_name else ""
+        if name:
+            nm[name] = nm.get(name, 0.0) + wf
+        if s_raw:
+            s = _SECTOR.get(s_raw, s_raw)
+            sec[s] = sec.get(s, 0.0) + wf
+        loc = locations[i] if locations and i < len(locations) else None
+        if loc:
+            c = _COUNTRY.get(str(loc), str(loc))
+            ctry[c] = ctry.get(c, 0.0) + wf
+    return {"names": nm, "sectors": sec, "countries": ctry, "n": len(nm)}
+
+
+def _parse_json(text: str) -> dict | None:
+    try:
+        d = json.loads(text)
+        dp = (d["componentsByNameMap"]["holdings"]["containersByNameMap"]
+              ["all"]["dataPointsByNameMap"])
+    except Exception:
         return None
-    lines = txt.splitlines()
+
+    def arr(field):
+        node = dp.get(field)
+        return node.get("value") if isinstance(node, dict) else None
+
+    names, weights = arr("issueName"), arr("holdingPercent")
+    if not names or not weights:
+        return None
+    out = _accumulate(names, weights, arr("sectorName"), arr("countryOfRisk"), arr("assetClass"))
     as_of = None
-    start = None
+    node = dp.get("asOfDate")
+    if isinstance(node, dict):
+        as_of = node.get("formattedValue")
+    out["as_of"] = as_of
+    return out if out["names"] else None
+
+
+def _parse_csv(text: str) -> dict | None:
+    lines = text.splitlines()
+    as_of, start = None, None
     for i, ln in enumerate(lines):
         if as_of is None and "as of" in ln.lower():
             rest = ln.split(",", 1)
@@ -77,55 +131,32 @@ def fetch(source: str) -> pd.DataFrame | None:
         df = pd.read_csv(io.StringIO("\n".join(lines[start:])), thousands=",")
     except Exception:
         return None
-    df.attrs["as_of"] = as_of
-    return df
 
+    def col(*cands):
+        low = {c.strip().lower(): c for c in df.columns}
+        for c in cands:
+            if c in low:
+                return low[c]
+        return None
 
-def _col(df: pd.DataFrame, *names: str) -> str | None:
-    low = {c.strip().lower(): c for c in df.columns}
-    for n in names:
-        if n in low:
-            return low[n]
-    return None
-
-
-def names(df: pd.DataFrame) -> dict[str, float]:
-    """Name -> weight fraction (0..1)."""
-    nc, wc = _col(df, "name"), _col(df, "weight (%)", "weight")
+    nc, wc = col("name"), col("weight (%)", "weight")
+    sc, lc = col("sector"), col("location")
+    ac = col("asset class")
     if not nc or not wc:
-        return {}
-    d = df[[nc, wc]].copy()
-    d[wc] = pd.to_numeric(d[wc], errors="coerce")
-    d = d.dropna(subset=[wc])
-    out: dict[str, float] = {}
-    for _, r in d.iterrows():
-        w = float(r[wc]) / 100.0
-        if w > 0:
-            out[str(r[nc])] = out.get(str(r[nc]), 0.0) + w
-    return out
+        return None
+    out = _accumulate(
+        list(df[nc]), list(df[wc]),
+        list(df[sc]) if sc else None,
+        list(df[lc]) if lc else None,
+        list(df[ac]) if ac else None,
+    )
+    out["as_of"] = as_of
+    return out if out["names"] else None
 
 
-def _aggregate(df: pd.DataFrame, group_col: str, mapping: dict | None) -> dict[str, float]:
-    gc, wc = _col(df, group_col), _col(df, "weight (%)", "weight")
-    if not gc or not wc:
-        return {}
-    d = df[[gc, wc]].copy()
-    d[wc] = pd.to_numeric(d[wc], errors="coerce")
-    d = d.dropna(subset=[wc])
-    out: dict[str, float] = {}
-    for _, r in d.iterrows():
-        label = str(r[gc]).strip()
-        if mapping:
-            label = mapping.get(label, label)
-        w = float(r[wc]) / 100.0
-        if w > 0 and label and label.lower() != "nan":
-            out[label] = out.get(label, 0.0) + w
-    return out
-
-
-def sectors(df: pd.DataFrame) -> dict[str, float]:
-    return _aggregate(df, "sector", _SECTOR)
-
-
-def countries(df: pd.DataFrame) -> dict[str, float]:
-    return _aggregate(df, "location", _COUNTRY)
+def load(source: str) -> dict | None:
+    """Return normalized look-through for a holdings URL or path. None on failure."""
+    text = _read_text(source)
+    if not text:
+        return None
+    return _parse_json(text) if text.lstrip().startswith("{") else _parse_csv(text)

@@ -30,21 +30,18 @@ class LookThrough:
 
 
 def _name_level(url: str) -> LookThrough | None:
-    df = holdings.fetch(url)
-    if df is None or df.empty:
-        return None
-    nm = holdings.names(df)
-    if not nm:
+    h = holdings.load(url)
+    if not h or not h["names"]:
         return None
     return LookThrough(
         vectors={
-            "Holdings (names)": nm,
-            "Sector": holdings.sectors(df),
-            "Country": holdings.countries(df),
+            "Holdings (names)": h["names"],
+            "Sector": h["sectors"],
+            "Country": h["countries"],
         },
         source="name-level",
-        as_of=df.attrs.get("as_of"),
-        n_names=len(nm),
+        as_of=h.get("as_of"),
+        n_names=h["n"],
     )
 
 

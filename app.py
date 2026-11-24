@@ -270,8 +270,8 @@ with tab_overlap:
             rws, seen = [], set()
             for i in pf["ISIN"]:
                 seen.add(i)
-                dflt = registry.REGISTRY[i].holdings_url if i in registry.REGISTRY else ""
-                rws.append({"ISIN": i, "Name": name_of.get(i, i), "Source URL": saved.get(i, dflt) or ""})
+                dflt = registry.source_for(i) or ""
+                rws.append({"ISIN": i, "Name": name_of.get(i, i), "Source URL": saved.get(i, dflt)})
             for i, u in saved.items():
                 if i not in seen:
                     rws.append({"ISIN": i, "Name": i, "Source URL": u})
@@ -291,9 +291,7 @@ with tab_overlap:
         st.session_state["sources_snap"] = str(sources_map)
 
     def source_of(i):
-        return sources_map.get(i) or (
-            registry.REGISTRY[i].holdings_url if i in registry.REGISTRY else None
-        )
+        return registry.source_for(i, sources_map.get(i))
 
     dim = st.radio("Dimension", DIMS, horizontal=True, key=f"dim::{active}")
 

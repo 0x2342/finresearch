@@ -91,13 +91,20 @@ only** (forces a common tier so cross-fund comparison stays valid), **Factsheet
 only**. Each weighted holding's actual tier + as-of date + name count is shown in
 the **provenance** panel.
 
-To enable name-level for a fund, paste its iShares Detailed Holdings CSV link in
-the overlap tab's "Holdings source URLs" expander (persists to `data/sources.csv`).
-Get the link from the fund's iShares product page → Portfolio Characteristics →
-Holdings → Detailed Holdings download. For a **swap** holding, point it at a
-*physical* reference fund on the same index (a swap fund's own file is a
-substitute basket). `source_of` resolves the URL from this editor first, then any
-`holdings_url` default in `registry.py`.
+Name-level data comes from the iShares `get-product-data` JSON API
+(`component=holdings.all`), parsed from its column-oriented parallel arrays
+(`issueName`, `holdingPercent`, `sectorName`, `countryOfRisk`, `asOfDate`); a
+BlackRock "Detailed Holdings" CSV is also accepted as a fallback. The registry
+carries each reference fund's **product id** and builds the URL automatically, so
+the six core funds resolve to name-level with no manual input. The per-fund
+"Holdings source URLs" editor (persisted to `data/sources.csv`) is an override —
+paste a URL there to change the source for one fund.
+
+Notes: for a **swap** holding the product id points at a *physical* reference
+fund on the same index (a swap fund's own file is a substitute basket). Use the
+`en_GB` / `uk-ishares` site for English labels; German-domiciled funds (STOXX 600
+DE) need `de-ishares` with `en_DE`. `registry.source_for(isin, override)`
+resolves the source: editor override → registry `holdings_url` → built API URL.
 
 ## Architecture (maps to the blueprint)
 
