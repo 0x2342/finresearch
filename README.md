@@ -73,6 +73,10 @@ renormalizes over the priced subset and reports `covered`; the window is set by
 the shortest-history ticker, and correlations rise toward 1 in a crash — so
 realised drawdown risk can exceed this.
 
+**Full derivations** (returns → covariance → portfolio vol → Euler risk
+contribution → sleeve/€ attribution), with the math mapped line-for-line to the
+code, are in **[docs/risk-methodology.md](docs/risk-methodology.md)**.
+
 ## Price proxies & data coverage
 
 The `Ticker` for each holding is an **index proxy** for the correlation series,
