@@ -1,0 +1,11 @@
+# Runtime data: price cache + portfolios (CSV) — not tracked
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Packaging
+*.zip
