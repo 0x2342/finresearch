@@ -77,6 +77,28 @@ and wreck the correlation.
   long-history (2009); only the Amsterdam listing is thin. Use a better-covered
   listing of the *same* fund — Xetra `EUN5.DE` or LSE `IEAC.L`.
 
+## Look-through sources & tiers
+
+Look-through for each holding comes from one of two tiers, chosen by a **global
+Source tier** switch in the overlap tab:
+
+- **Name-level** — a BlackRock/iShares "Detailed Holdings" CSV. Serves *every*
+  dimension (Holdings names, and Sector/Country by aggregation) — strictly richer.
+- **Factsheet** — the seeded sector/country vectors. The fallback; no names.
+
+Tiers: **Auto** (name-level where a source resolves, else factsheet), **Name-level
+only** (forces a common tier so cross-fund comparison stays valid), **Factsheet
+only**. Each weighted holding's actual tier + as-of date + name count is shown in
+the **provenance** panel.
+
+To enable name-level for a fund, paste its iShares Detailed Holdings CSV link in
+the overlap tab's "Holdings source URLs" expander (persists to `data/sources.csv`).
+Get the link from the fund's iShares product page → Portfolio Characteristics →
+Holdings → Detailed Holdings download. For a **swap** holding, point it at a
+*physical* reference fund on the same index (a swap fund's own file is a
+substitute basket). `source_of` resolves the URL from this editor first, then any
+`holdings_url` default in `registry.py`.
+
 ## Architecture (maps to the blueprint)
 
 | Module | Role |
@@ -84,14 +106,15 @@ and wreck the correlation.
 | `core/registry.py` | Resolver seed: ISIN → index + reference ticker/holdings |
 | `core/exposures.py` | Seeded factsheet look-through (sector/country), provenance-tagged |
 | `core/prices.py` | Price cache layer (yfinance → Stooq → parquet) |
-| `core/holdings.py` | Live name-level look-through (iShares Detailed Holdings CSV) |
+| `core/holdings.py` | Parse iShares Detailed Holdings CSV → names + aggregate sector/country |
+| `core/providers.py` | Look-through providers + tier resolution (name-level ↔ factsheet) |
+| `core/store.py` | Portfolios, per-fund source URLs, persistence |
 | `core/overlap.py` | Overlap engine (weight overlap, pairwise, portfolio aggregate) |
 | `app.py` | Streamlit UI |
 
 ## Next (deferred per blueprint)
 
-- Name-level look-through: set `holdings_url` on the physical reference fund in
-  `registry.py` → overlap tab gains a "Holdings (names)" dimension.
-- `ISIN → index-variant → reference-fund` resolver for arbitrary ISINs (currently
-  a static seed).
+- Automatic `ISIN → index-variant → reference-fund` resolution (today the
+  reference fund's holdings URL is supplied per fund, not derived).
+- Cross-portfolio comparison (tracked book vs research candidate).
 - Constituent-level price correlation; optimisation; auto-refresh.

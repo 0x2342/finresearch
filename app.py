@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from core import exposures, overlap, prices, registry, store
+from core import exposures, overlap, prices, providers, registry, store
 
 st.set_page_config(page_title="Financial Research", layout="wide")
 
@@ -24,6 +24,12 @@ MODE_LABEL = {
 }
 EMPTY = pd.DataFrame(columns=["ISIN", "Name", "Ticker", "Weight", "Units"])
 MIN_HISTORY_YEARS = 3  # covariance needs ~3y; shorter series get flagged
+TIER_LABEL = {
+    "auto": "Auto — name-level, else factsheet",
+    "name": "Name-level only",
+    "factsheet": "Factsheet only",
+}
+DIMS = ["Sector", "Country", "Holdings (names)"]
 
 
 def _f(x, default: float = 0.0) -> float:
@@ -153,6 +159,11 @@ def cached_panel(tickers: tuple[str, ...], period: str) -> pd.DataFrame:
     return prices.get_panel(list(tickers), period)
 
 
+@st.cache_data(show_spinner=False)
+def cached_lookthrough(isin: str, tier: str, url: str | None):
+    return providers.resolve(isin, tier, url)
+
+
 all_tickers = tuple(t for t in ticker_of.values() if t)
 panel = cached_panel(all_tickers, period) if all_tickers else pd.DataFrame()
 last = panel.ffill().iloc[-1] if not panel.empty else pd.Series(dtype=float)
@@ -244,50 +255,98 @@ with tab_corr:
 # Look-through overlap (weighted by the active mode's effective weights)
 # --------------------------------------------------------------------------- #
 with tab_overlap:
-    dim = st.radio("Dimension", ["Sector", "Country"], horizontal=True, key=f"dim::{active}")
-    all_vecs = exposures.vectors(dim)
-    held = {i: all_vecs[i] for i in weights if i in all_vecs}
-    uncovered = [name_of.get(i, i) for i in weights if i not in all_vecs]
+    # --- global look-through source tier ---
+    tier = st.radio(
+        "Source tier", ["auto", "name", "factsheet"],
+        index=["auto", "name", "factsheet"].index(st.session_state.get("lt_tier", "auto")),
+        format_func=lambda t: TIER_LABEL[t], horizontal=True, key="lt_tier",
+    )
+
+    # --- per-fund holdings-source URLs (global; persisted to data/sources.csv) ---
+    with st.expander("Holdings source URLs (iShares 'Detailed Holdings' CSV)"):
+        st.caption("Paste a fund's CSV link to enable name-level look-through for it. Blank = factsheet only.")
+        if "sources_seed" not in st.session_state:
+            saved = store.load_sources()
+            rws, seen = [], set()
+            for i in pf["ISIN"]:
+                seen.add(i)
+                dflt = registry.REGISTRY[i].holdings_url if i in registry.REGISTRY else ""
+                rws.append({"ISIN": i, "Name": name_of.get(i, i), "Source URL": saved.get(i, dflt) or ""})
+            for i, u in saved.items():
+                if i not in seen:
+                    rws.append({"ISIN": i, "Name": i, "Source URL": u})
+            st.session_state["sources_seed"] = pd.DataFrame(rws, columns=["ISIN", "Name", "Source URL"])
+        sedit = st.data_editor(
+            st.session_state["sources_seed"], num_rows="dynamic",
+            width="stretch", hide_index=True, key="sources_editor",
+        )
+
+    sources_map = {}
+    for _, r in sedit.iterrows():
+        i, u = str(r.get("ISIN", "")).strip(), str(r.get("Source URL", "")).strip()
+        if i and u and u.lower() != "nan":
+            sources_map[i] = u
+    if st.session_state.get("sources_snap") != str(sources_map):
+        store.save_sources(sources_map)
+        st.session_state["sources_snap"] = str(sources_map)
+
+    def source_of(i):
+        return sources_map.get(i) or (
+            registry.REGISTRY[i].holdings_url if i in registry.REGISTRY else None
+        )
+
+    dim = st.radio("Dimension", DIMS, horizontal=True, key=f"dim::{active}")
 
     if mode == "tracked" and not weights:
         st.info("Tracked mode: enter Units and make sure tickers price, to weight the look-through.")
+
+    lts = {i: cached_lookthrough(i, tier, source_of(i)) for i in weights}
+    held = {i: lts[i].vector(dim) for i in weights if lts[i].vector(dim)}
+    uncovered = [name_of.get(i, i) for i in weights if not lts[i].vector(dim)]
+
+    prov = pd.DataFrame([
+        {"Fund": name_of.get(i, i), "Source": lts[i].source,
+         "As of": lts[i].as_of or "—",
+         "Names": lts[i].n_names if lts[i].n_names else "—"}
+        for i in weights
+    ])
+    if not prov.empty:
+        st.caption("Look-through provenance (which tier served each weighted holding)")
+        st.dataframe(prov, width="stretch", hide_index=True)
+
     if not held:
-        st.info("No seeded exposure vectors for the weighted instruments.")
+        st.info(f"No {dim} look-through for the weighted holdings under this tier.")
     else:
-        st.markdown("**Pairwise overlap** — shared economic exposure (Σ min of weights).")
+        st.markdown("**Pairwise overlap** — shared exposure (Σ min of weights).")
         lab = {i: name_of.get(i, i) for i in held}
         mat = overlap.pairwise(held).rename(index=lab, columns=lab)
-        fig = px.imshow(
-            mat, text_auto=".0%", color_continuous_scale="Blues",
-            zmin=0, zmax=1, aspect="auto",
-        )
+        fig = px.imshow(mat, text_auto=".0%", color_continuous_scale="Blues",
+                        zmin=0, zmax=1, aspect="auto")
         fig.update_layout(height=430, margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig, width="stretch")
 
         st.markdown("**Portfolio look-through** — aggregate exposure by effective weight.")
-        agg = overlap.portfolio_lookthrough(weights, held)
+        agg = overlap.portfolio_lookthrough(weights, held).head(20)
         covered = sum(weights[i] for i in held)
         bar = px.bar(agg.rename("weight").reset_index(), x="weight", y="index", orientation="h")
         bar.update_layout(
             height=max(260, 26 * len(agg)), yaxis=dict(autorange="reversed"),
             xaxis_tickformat=".0%", margin=dict(l=0, r=0, t=10, b=0),
-            yaxis_title="", xaxis_title=f"% of portfolio (covered {covered:.0%})",
+            yaxis_title="", xaxis_title=f"% of portfolio (covered {covered:.0%}; top {len(agg)})",
         )
         st.plotly_chart(bar, width="stretch")
         if uncovered:
-            st.caption("No " + dim.lower() + " vector for: " + ", ".join(uncovered))
+            st.caption(f"No {dim} data for: " + ", ".join(uncovered))
 
         st.markdown("**Compare two funds**")
         opts = list(held)
         c1, c2 = st.columns(2)
         a = c1.selectbox("Fund A", opts, format_func=lambda i: name_of.get(i, i), key=f"ova::{active}")
-        b = c2.selectbox(
-            "Fund B", opts, index=min(1, len(opts) - 1),
-            format_func=lambda i: name_of.get(i, i), key=f"ovb::{active}",
-        )
-        st.metric(f"Overlap ({dim.lower()})", f"{overlap.weight_overlap(held[a], held[b]):.0%}")
+        b = c2.selectbox("Fund B", opts, index=min(1, len(opts) - 1),
+                         format_func=lambda i: name_of.get(i, i), key=f"ovb::{active}")
+        st.metric(f"Overlap ({dim})", f"{overlap.weight_overlap(held[a], held[b]):.0%}")
         comp = pd.DataFrame({name_of.get(a, a): held[a], name_of.get(b, b): held[b]}).fillna(0.0)
-        comp = (comp * 100).round(1).sort_values(comp.columns[0], ascending=False)
+        comp = (comp * 100).round(1).sort_values(comp.columns[0], ascending=False).head(25)
         st.dataframe(comp, width="stretch")
 
 # --------------------------------------------------------------------------- #

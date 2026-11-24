@@ -161,3 +161,31 @@ def mode_of(idx: dict, slug: str) -> str:
         if p["slug"] == slug:
             return p.get("mode", "research")
     return "research"
+
+
+# --- Look-through source URLs (ISIN -> iShares holdings CSV) ---------------- #
+_SOURCES = os.path.join(os.path.dirname(__file__), "..", "data", "sources.csv")
+
+
+def load_sources() -> dict[str, str]:
+    try:
+        if os.path.exists(_SOURCES):
+            df = pd.read_csv(_SOURCES)
+            out = {}
+            for _, r in df.iterrows():
+                isin, url = str(r.get("ISIN", "")).strip(), str(r.get("URL", "")).strip()
+                if isin and url and url.lower() != "nan":
+                    out[isin] = url
+            return out
+    except Exception:
+        pass
+    return {}
+
+
+def save_sources(mapping: dict[str, str]) -> None:
+    try:
+        os.makedirs(os.path.dirname(_SOURCES), exist_ok=True)
+        rows = [{"ISIN": k, "URL": v} for k, v in mapping.items() if k and v]
+        pd.DataFrame(rows, columns=["ISIN", "URL"]).to_csv(_SOURCES, index=False)
+    except Exception:
+        pass
