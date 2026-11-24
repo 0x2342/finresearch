@@ -106,6 +106,15 @@ fund on the same index (a swap fund's own file is a substitute basket). Use the
 DE) need `de-ishares` with `en_DE`. `registry.source_for(isin, override)`
 resolves the source: editor override → registry `holdings_url` → built API URL.
 
+**Bond sector crosswalk:** the API returns Bloomberg bond-sector labels (Banking,
+Treasuries, Capital Goods, …) for bond funds, not GICS, so cross-asset sector
+overlap would collapse to ~0 without normalisation. `_SECTOR` in `holdings.py`
+maps corporate bond sectors to GICS (Banking→Financials, Electric→Utilities, …),
+matching the factsheet tagging, and buckets the non-corporate portion under
+`Government` / `Securitized` (no equity analog, so they correctly don't overlap
+equities). Result: name-level EUR Corp ≈ factsheet on Sector; a govt-heavy fund
+like Global Aggregate stays low vs equities because it genuinely is government debt.
+
 ## Architecture (maps to the blueprint)
 
 | Module | Role |

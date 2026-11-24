@@ -38,7 +38,38 @@ _COUNTRY = {
     "Czech Republic": "CZ", "Egypt": "EG", "Colombia": "CO", "New Zealand": "NZ",
 }
 # Normalise iShares sector labels to the GICS names used by factsheet vectors.
-_SECTOR = {"Communication": "Communication Services"}
+# Bond funds report Bloomberg bond-sector labels (Banking, Treasuries, ...) rather
+# than GICS, so without this crosswalk a bond fund's "Banking" never matches an
+# equity fund's "Financials" and cross-asset sector overlap collapses to ~0. This
+# maps corporate bond sectors to GICS (matching the factsheet tagging) and buckets
+# the non-corporate portion (govt / securitized) under labels with no equity
+# analog, so those correctly do NOT overlap equities.
+_SECTOR = {
+    "Communication": "Communication Services",   # equity label variant
+    # --- corporate bond sectors (Bloomberg BCLASS) -> GICS ---
+    "Banking": "Financials", "Brokerage": "Financials",
+    "Brokerage/Asset Managers/Exchanges": "Financials",
+    "Finance Companies": "Financials", "Financial Other": "Financials",
+    "Financial Institutions": "Financials", "Insurance": "Financials",
+    "REITs": "Real Estate", "Reits": "Real Estate",
+    "Electric": "Utilities", "Natural Gas": "Utilities", "Utility Other": "Utilities",
+    "Capital Goods": "Industrials", "Transportation": "Industrials",
+    "Industrial Other": "Industrials", "Basic Industry": "Materials",
+    "Consumer Cyclical": "Consumer Discretionary",
+    "Consumer Non-Cyclical": "Consumer Staples",
+    "Communications": "Communication Services", "Technology": "Information Technology",
+    "Pharmaceuticals": "Health Care",
+    # --- non-corporate (no GICS equity analog) -> consistent buckets ---
+    "Treasury": "Government", "Treasuries": "Government", "Sovereign": "Government",
+    "Government-Related": "Government", "Government Related": "Government",
+    "Agency": "Government", "Agency Fixed Rate": "Government",
+    "Agency Variable Rate": "Government", "Supranational": "Government",
+    "Local Authority": "Government", "Local Government": "Government",
+    "Owned No Guarantee": "Government", "Government Guaranteed": "Government",
+    "Mortgage Collateralized": "Securitized", "Securitized": "Securitized",
+    "MBS": "Securitized", "ABS": "Securitized", "CMBS": "Securitized",
+    "Covered": "Securitized", "Whole Business ABS": "Securitized",
+}
 # Rows that are not real securities (excluded from look-through).
 _CASH_ASSET = {"Cash", "FX", "Futures", "Cash Collateral and Margins"}
 _CASH_SECTOR = {"Cash and/or Derivatives"}
