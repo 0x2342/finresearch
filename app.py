@@ -329,6 +329,13 @@ with tab_overlap:
                         zmin=0, zmax=1, aspect="auto")
         fig.update_layout(height=430, margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig, width="stretch")
+        st.caption(
+            "Each vector is normalized to 100% of its invested exposure "
+            "(cash/derivatives — and any uncovered factsheet tail — excluded from the "
+            "base), so self-overlap reads 100%. Sector/Country overlap measures shared "
+            "allocation *shape*, not shared securities — use the Holdings (names) "
+            "dimension for true redundancy (equity vs bond ≈ 0 there)."
+        )
 
         st.markdown("**Portfolio look-through** — aggregate exposure by effective weight.")
         agg = overlap.portfolio_lookthrough(weights, held).head(20)

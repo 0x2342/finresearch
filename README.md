@@ -91,6 +91,16 @@ only** (forces a common tier so cross-fund comparison stays valid), **Factsheet
 only**. Each weighted holding's actual tier + as-of date + name count is shown in
 the **provenance** panel.
 
+**Normalization & interpretation.** Each look-through vector (sector/country/names)
+is normalized to sum to 1 of its *invested* base — cash/derivatives are excluded
+from name-level, and any uncovered tail from partial factsheet vectors — so the
+pairwise overlap diagonal reads 100% rather than ~97-99%. Note that Σ-min sector/
+country overlap measures shared allocation *shape*, not shared holdings or risk:
+over ~11 GICS buckets any two diversified funds score high (e.g. a corporate-bond
+fund vs equities lands ~55-67% because both spread across the same sectors —
+same sectors, different instruments). For genuine redundancy use the **Holdings
+(names)** dimension, where equity-vs-bond overlap is ~0.
+
 Name-level data comes from the iShares `get-product-data` JSON API
 (`component=holdings.all`), parsed from its column-oriented parallel arrays
 (`issueName`, `holdingPercent`, `sectorName`, `countryOfRisk`, `asOfDate`); a

@@ -18,6 +18,14 @@ from dataclasses import dataclass, field
 from . import exposures, holdings
 
 
+def _norm(v: dict[str, float]) -> dict[str, float]:
+    """Normalise a vector to sum to 1 (of its invested/covered base), so that
+    self-overlap (Σ min) reads 100%. Cash/derivatives (and, for factsheet, the
+    uncovered tail) are already excluded, so this rebases to what's covered."""
+    total = sum(v.values())
+    return {k: x / total for k, x in v.items()} if total else v
+
+
 @dataclass
 class LookThrough:
     vectors: dict[str, dict[str, float]] = field(default_factory=dict)  # dim -> {label: w}
@@ -36,9 +44,9 @@ def _name_level(url: str):
     if h and h.get("names"):
         return LookThrough(
             vectors={
-                "Holdings (names)": h["names"],
-                "Sector": h["sectors"],
-                "Country": h["countries"],
+                "Holdings (names)": _norm(h["names"]),
+                "Sector": _norm(h["sectors"]),
+                "Country": _norm(h["countries"]),
             },
             source="name-level",
             as_of=h.get("as_of"),
@@ -54,9 +62,9 @@ def _factsheet(isin: str) -> LookThrough | None:
         return None
     vecs: dict[str, dict[str, float]] = {}
     if sec:
-        vecs["Sector"] = sec
+        vecs["Sector"] = _norm(sec)
     if ctry:
-        vecs["Country"] = ctry
+        vecs["Country"] = _norm(ctry)
     return LookThrough(vectors=vecs, source="factsheet", as_of=exposures.AS_OF.get(isin))
 
 
