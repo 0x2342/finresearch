@@ -22,6 +22,11 @@ Multiple named portfolios, each with a **weight mode**:
 - **Research** — effective weights come from the `Weight` column (a hypothetical
   allocation; no units needed).
 - **Tracked** — effective weights come from `Units × last price` (a real book).
+  The `Weight` column is then **auto-computed** (normalised %) and **locked** —
+  you edit Units, the weights follow. This makes a tracked book a clean source of
+  real weights: **Duplicate** it and switch the copy to **Research** to explore
+  those same weights with longer-history proxies (swap each `Ticker` for a
+  longer-running tracker of the same index). Unpriced holdings compute to 0%.
 
 Correlation is mode-independent (pairwise by nature). The look-through overlap
 (pairwise matrix, portfolio aggregate, A/B compare) uses the active portfolio's

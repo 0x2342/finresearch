@@ -119,18 +119,33 @@ with st.sidebar:
     if seed_key not in st.session_state:
         df0 = store.load_portfolio(active)
         st.session_state[seed_key] = EMPTY.copy() if (df0 is None or df0.empty) else df0
+    tracked_mode = mode == "tracked"
+    weight_cfg = (
+        st.column_config.NumberColumn(
+            "Weight %", format="%.2f", disabled=True,
+            help="Auto-computed from Units × price (normalised). Immutable in tracked "
+                 "mode — duplicate this book into a research portfolio to explore the "
+                 "same weights with longer-history proxies.",
+        )
+        if tracked_mode
+        else st.column_config.NumberColumn("Weight", format="%.3f", min_value=0.0)
+    )
     edited = st.data_editor(
         st.session_state[seed_key],
         num_rows="dynamic",
         width="stretch",
         hide_index=True,
         column_config={
-            "Weight": st.column_config.NumberColumn(format="%.3f", min_value=0.0),
+            "Weight": weight_cfg,
             "Units": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
         },
         key=f"editor::{active}",
     )
-    st.caption(f"Edits auto-save · {MODE_LABEL[mode]}")
+    st.caption(
+        ("Units auto-save · Weight is computed from Units × price · "
+         if tracked_mode else "Edits auto-save · ")
+        + MODE_LABEL[mode]
+    )
 
 # --------------------------------------------------------------------------- #
 # Clean + persist the active portfolio
@@ -169,6 +184,23 @@ panel = cached_panel(all_tickers, period) if all_tickers else pd.DataFrame()
 last = panel.ffill().iloc[-1] if not panel.empty else pd.Series(dtype=float)
 
 weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
+
+# Tracked books: Weight is DERIVED (Units × price, normalised %), not entered. Persist
+# the computed value so the column is populated and a Duplicate → research copy inherits
+# real weights — the whole point: explore those weights with longer-history proxies.
+# The editor's Weight column is disabled, so refreshing it in the seed is edit-safe.
+if mode == "tracked" and not pf.empty:
+    wpct = {i: round(weights.get(i, 0.0) * 100, 2) for i in pf["ISIN"]}
+    pf["Weight"] = pf["ISIN"].map(wpct).fillna(0.0)
+    _snap_w = pf[["ISIN", "Name", "Ticker", "Weight", "Units"]].to_csv(index=False)
+    if st.session_state.get(f"snap::{active}") != _snap_w:
+        store.save_portfolio(active, pf)
+        st.session_state[f"snap::{active}"] = _snap_w
+    seed = st.session_state.get(seed_key)
+    if seed is not None and "ISIN" in getattr(seed, "columns", []):
+        new_w = seed["ISIN"].map(wpct).fillna(0.0)
+        if "Weight" not in seed or not new_w.equals(seed["Weight"]):
+            st.session_state[seed_key] = seed.assign(Weight=new_w)
 
 tab_px, tab_corr, tab_overlap, tab_value, tab_alloc, tab_risk = st.tabs(
     ["Prices", "Correlation", "Look-through overlap", "Portfolio value", "Allocation", "Risk"]
