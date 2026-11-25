@@ -228,6 +228,15 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   this; the Stooq fallback is raw close (not reliably dividend-adjusted), so a
   Stooq-sourced distributing fund can show inflated vol — the Prices tab flags
   any Stooq series, and accumulating share classes avoid the issue entirely.
+- **Common base currency (EUR).** Returns are taken on EUR series. A non-EUR
+  *quote* is converted first ($p^{\text{EUR}}_t = p^{\text{ccy}}_t \cdot
+  \mathrm{FX}^{\text{ccy}\to\text{EUR}}_t$), so an unhedged holding's FX return is
+  part of its measured vol and local-currency returns are never pooled in one
+  $\Sigma$. EUR-quoted series are unchanged (their EUR price already embeds the
+  cross; converting would double-count). This normalises the *quote* currency —
+  hedged-vs-unhedged *exposure* is a separate look-through concern. A series whose
+  currency can't be resolved, or whose cross is unavailable, is left native and
+  flagged rather than silently rescaled.
 - **Estimation window.** $\Sigma$ is a *sample* estimate over a finite window —
   noisy, especially short histories (the tab warns under 60 observations). The
   window is the **intersection** of all series (§1.1), so one short-history

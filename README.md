@@ -89,10 +89,22 @@ Xetra (`.DE`) listings (better yfinance coverage than `.PA`/`.AS`) and avoid new
 series, so one short series truncates everything.
 
 The **Data coverage** panel in the Prices tab shows, per holding, whether it
-priced, its **source** (yfinance = total-return / dividend-adjusted; stooq = raw
-close, flagged), start date, point count and years; the Correlation tab shows the
-overlapping window and lists any excluded (unpriced) instruments. Use these to
-vet a proxy, then set the ticker in the sidebar editor (it persists).
+priced, its **currency** (see below), its **source** (yfinance = total-return /
+dividend-adjusted; stooq = raw close, flagged), start date, point count and
+years; the Correlation tab shows the overlapping window and lists any excluded
+(unpriced) instruments. Use these to vet a proxy, then set the ticker in the
+sidebar editor (it persists).
+
+**Common base currency (EUR).** A series *quoted* in USD/GBP/… is converted to
+EUR (price × FX cross) **before** any returns are taken, so an unhedged fund's FX
+move is captured in EUR and local-currency returns are never pooled into one
+covariance. EUR-quoted series pass through untouched — a EUR-listed S&P 500 ETF
+already embeds the USD move, so converting it would double-count. Quote currency
+is resolved from provider metadata, then a conservative listing-suffix map
+(`.DE`→EUR, `.SW`→CHF, bare symbol→USD, …); an unresolved currency or a missing
+cross leaves the series in its native currency and **flags** it (`Ccy` column
+shows `USD→EUR` when converted, `USD (unconv)` / `?` when not). Pence-quoted LSE
+lines (`GBp`) are scaled ÷100 before the GBP cross.
 
 Registry ships long-history EUR proxies: S&P 500 `SXR8.DE`, STOXX 600 `EXSA.DE`,
 MSCI Japan `IQQJ.DE`, MSCI EM `IS3N.DE`.

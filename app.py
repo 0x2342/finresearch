@@ -180,6 +180,17 @@ tab_px, tab_corr, tab_overlap, tab_value, tab_alloc, tab_risk = st.tabs(
 with tab_px:
     priced = list(panel.columns) if not panel.empty else []
     srcs = panel.attrs.get("sources", {}) if not panel.empty else {}
+    curr = panel.attrs.get("currencies", {}) if not panel.empty else {}
+    conv = panel.attrs.get("converted", {}) if not panel.empty else {}
+
+    def _ccy_label(tk: str) -> str:
+        c = curr.get(tk, "?")
+        if c in ("EUR", ""):
+            return "EUR"
+        if c == "?":
+            return "?"
+        return f"{c}→EUR" if conv.get(tk) else f"{c} (unconv)"
+
     cov = []
     for i in pf["ISIN"]:
         t = ticker_of.get(i, "")
@@ -188,13 +199,14 @@ with tab_px:
             yrs = round((s.index[-1] - s.index[0]).days / 365.25, 1)
             cov.append({
                 "Name": name_of[i], "Ticker": t, "Priced": "✓",
-                "Source": srcs.get(t, "?"),
+                "Ccy": _ccy_label(t), "Source": srcs.get(t, "?"),
                 "From": str(s.index[0].date()), "Points": int(len(s)),
                 "Years": yrs, "Flag": "⚠ short" if yrs < MIN_HISTORY_YEARS else "",
             })
         else:
             cov.append({"Name": name_of[i], "Ticker": t, "Priced": "✗",
-                        "Source": "—", "From": "—", "Points": 0, "Years": 0.0, "Flag": ""})
+                        "Ccy": "—", "Source": "—", "From": "—", "Points": 0,
+                        "Years": 0.0, "Flag": ""})
     st.markdown("**Data coverage** — check each proxy actually pulls and has enough history.")
     st.dataframe(pd.DataFrame(cov), width="stretch", hide_index=True)
     st.caption(
@@ -208,6 +220,16 @@ with tab_px:
             "reliably dividend-adjusted, so returns/volatility can be overstated for "
             "distributing funds — yfinance series are total-return. Prefer an "
             "accumulating share class, or a ticker yfinance covers."
+        )
+    unconv = sorted(
+        t for t in priced
+        if curr.get(t) == "?" or (curr.get(t) not in ("EUR", "", "?") and not conv.get(t))
+    )
+    if unconv:
+        st.warning(
+            "Not converted to EUR: " + ", ".join(unconv) + ". Quote currency is "
+            "unknown, or its EUR cross was unavailable — returns for these may mix "
+            "currencies. Everything else is in EUR (non-EUR quotes × FX)."
         )
     unpriced = sorted({c["Ticker"] for c in cov if c["Priced"] == "✗" and c["Ticker"]})
     if unpriced:

@@ -7,11 +7,15 @@ working offline. Never raises -- returns None when nothing is available.
 from __future__ import annotations
 
 import io
+import json
 import os
 
 import pandas as pd
 
+from core import fx
+
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "prices")
+_CCY_CACHE = os.path.join(_CACHE_DIR, "_ccy.json")
 
 
 def _cache_file(ticker: str) -> str:
@@ -89,11 +93,53 @@ def get_prices(ticker: str, period: str = "5y") -> pd.Series | None:
     return c
 
 
-def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
-    """Aligned close-price panel (inner-joined on common dates).
+def _currency_meta(ticker: str) -> str | None:
+    """Quote currency from yfinance `fast_info`, memoised to a JSON sidecar.
 
-    `panel.attrs["sources"]` maps ticker -> provenance (see `get_prices`), so the
-    UI can flag non-total-return series.
+    Only successful (non-empty) results are cached, so a ticker that failed while
+    offline is retried later rather than being pinned to 'unknown'. Returns None
+    when metadata is unavailable; the suffix fallback then takes over.
+    """
+    try:
+        cache = {}
+        if os.path.exists(_CCY_CACHE):
+            with open(_CCY_CACHE) as fh:
+                cache = json.load(fh)
+        if ticker in cache and cache[ticker]:
+            return cache[ticker]
+        c = None
+        try:
+            import yfinance as yf
+
+            fi = yf.Ticker(ticker).fast_info
+            c = fi.get("currency") if hasattr(fi, "get") else getattr(fi, "currency", None)
+        except Exception:
+            c = None
+        if c:
+            cache[ticker] = c
+            try:
+                os.makedirs(_CACHE_DIR, exist_ok=True)
+                with open(_CCY_CACHE, "w") as fh:
+                    json.dump(cache, fh)
+            except Exception:
+                pass
+        return c or None
+    except Exception:
+        return None
+
+
+def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
+    """Aligned close-price panel, normalised to a common base currency (EUR).
+
+    Non-EUR-quoted series are converted to EUR (price × FX) before any returns
+    are taken, so FX risk is captured consistently and local-currency returns are
+    never pooled. EUR-quoted series pass through unchanged.
+
+    `panel.attrs`:
+      - ``sources``:    ticker -> data provenance (see `get_prices`).
+      - ``currencies``: ticker -> resolved quote currency ('?' if unknown).
+      - ``converted``:  ticker -> True (converted to EUR) / False (non-EUR but the
+                        cross was unavailable, so left in native currency).
     """
     series, sources = {}, {}
     for t in dict.fromkeys(t for t in tickers if t):
@@ -103,6 +149,29 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
             sources[t] = s.attrs.get("source", "?")
     if not series:
         return pd.DataFrame()
+
+    # Normalise to EUR. Resolve each quote currency, then fetch each needed
+    # <base>EUR cross at most once.
+    currencies: dict[str, str] = {}
+    converted: dict[str, bool] = {}
+    fx_cache: dict[str, pd.Series | None] = {}
+
+    def _cross(base: str) -> pd.Series | None:
+        if base not in fx_cache:
+            fx_cache[base] = get_prices(f"{base}EUR=X", period)
+        return fx_cache[base]
+
+    for t, s in list(series.items()):
+        ccy = fx.native_currency(t, _currency_meta)
+        currencies[t] = ccy or "?"
+        base, _scale = fx.fx_base(ccy)
+        if ccy and base != "EUR":
+            conv, ok = fx.to_eur(s, ccy, _cross(base))
+            series[t] = conv
+            converted[t] = ok
+
     panel = pd.concat(series.values(), axis=1, keys=series.keys())
     panel.attrs["sources"] = sources
+    panel.attrs["currencies"] = currencies
+    panel.attrs["converted"] = converted
     return panel
