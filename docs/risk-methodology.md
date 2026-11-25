@@ -253,7 +253,28 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
 
 ---
 
-## 9. Code map
+## 9. Rolling volatility (regime lens)
+
+The headline $\sigma_p$ is one number over the whole window — it blends every
+regime in that window into a single average (§8, *Stationarity*). To see how risk
+has actually moved, the Risk tab also plots **rolling annualised volatility** at
+12-month (252-day) and 36-month (756-day) windows:
+
+$$\sigma^{(k)}_t \;=\; \sqrt{252}\,\cdot\,\mathrm{std}\!\big(r_{p,\,t-k+1},\dots,r_{p,\,t}\big),
+\qquad r_{p,t} = \mathbf{w}^\top \mathbf{r}_t$$
+
+where $r_{p,t}$ is the book's daily return at the **current, fixed** weights.
+Holding weights constant isolates the effect of *market* conditions rather than
+past rebalancing. By construction the std of $r_p$ over the full window equals the
+headline $\sigma_p$, so the flat reference line and the rolling lines are the same
+measure at different horizons: 36m is smoother, 12m reacts faster. A recent 12m
+reading well above the full-window line says current conditions are riskier than
+the long-run average implies. Each window renders only once enough history exists
+($\geq$ 1y / $\geq$ 3y).
+
+---
+
+## 10. Code map
 
 | Quantity | Formula | Where |
 |---|---|---|
@@ -268,3 +289,5 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
 | Volume / share | §6.2 | `overlap.portfolio_volume`, Risk tab |
 | Sleeve RC | §6.3 | Risk tab → `srisk` |
 | € risk | §7 | Risk tab → `eur_vol` |
+| Portfolio returns | $r_{p,t}=\mathbf{w}^\top\mathbf{r}_t$ | `risk.portfolio_returns` |
+| Rolling vol (12m/36m) | §9 | `risk.rolling_vol` → Risk tab |

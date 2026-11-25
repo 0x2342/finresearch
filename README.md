@@ -75,6 +75,12 @@ position is never hidden behind a 100% figure. The window is set by the
 shortest-history ticker, and correlations rise toward 1 in a crash — so realised
 drawdown risk can exceed this.
 
+Because one full-window number averages across regimes, the tab also plots
+**rolling 12-month and 36-month annualized volatility** (book return at constant
+current weights) over a dotted full-window-σ reference — so a calm recent stretch
+is distinguishable from a 2022-style shock. The rolling basis reconciles exactly
+with the headline σ.
+
 **Full derivations** (returns → covariance → portfolio vol → Euler risk
 contribution → sleeve/€ attribution), with the math mapped line-for-line to the
 code, are in **[docs/risk-methodology.md](docs/risk-methodology.md)**.

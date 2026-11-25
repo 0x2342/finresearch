@@ -56,3 +56,48 @@ def decompose(panel, weights: dict[str, float]) -> dict | None:
         "rc_frac": rc_frac,
         "standalone": standalone,
     }
+
+
+def portfolio_returns(panel, weights: dict[str, float]):
+    """Daily return series of the book at fixed current weights (constant-mix).
+
+    Same priced-subset filter and renormalisation as `decompose`, so the std of
+    this series over the full window equals `decompose(...)['ann_vol']/√252`.
+    Returns a pandas Series, or None if nothing is priced.
+    """
+    cols = getattr(panel, "columns", [])
+    tickers = [t for t in weights if t and t in cols and weights[t] > 0]
+    if not tickers:
+        return None
+    rets = panel[tickers].pct_change().dropna(how="any")
+    if len(rets) < 2:
+        return None
+    raw = np.array([weights[t] for t in tickers], dtype=float)
+    tot = raw.sum()
+    if tot <= 0:
+        return None
+    w = raw / tot
+    return rets[tickers] @ w
+
+
+def rolling_vol(panel, weights: dict[str, float], windows=(252, 756)):
+    """Annualised rolling volatility of the book for each window (trading days).
+
+    Returns a DataFrame indexed by date with one column per window that has
+    enough history, labelled in months (252 → "12m", 756 → "36m"). None if no
+    window fits. A regime lens: how the full-window number (a flat reference) is
+    really a blend of calmer and more turbulent stretches.
+    """
+    r = portfolio_returns(panel, weights)
+    if r is None or r.empty:
+        return None
+    import pandas as pd
+
+    out = {}
+    for win in windows:
+        if len(r) >= win:
+            label = f"{round(win / TRADING_DAYS * 12)}m"
+            out[label] = r.rolling(win).std(ddof=1) * np.sqrt(TRADING_DAYS)
+    if not out:
+        return None
+    return pd.DataFrame(out).dropna(how="all")

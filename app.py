@@ -674,3 +674,32 @@ with tab_risk:
                                   yaxis_title="", xaxis_title="% of total risk")
                 st.plotly_chart(fig, width="stretch")
                 st.dataframe(hdf, width="stretch", hide_index=True)
+
+                st.markdown(
+                    "**Rolling annualized volatility** — how the single number above "
+                    "moves across regimes (constant current weights)."
+                )
+                rvol = risk.rolling_vol(rpanel, tick_w)
+                if rvol is None or rvol.empty:
+                    st.caption(
+                        "Need ≥ 1 year of overlapping history for a rolling 12-month "
+                        "volatility — the window here is too short."
+                    )
+                else:
+                    rfig = px.line(rvol, labels={"value": "annualized vol", "variable": "window"})
+                    rfig.add_hline(
+                        y=dec["ann_vol"], line_dash="dot", line_color="#888",
+                        annotation_text="full-window σ", annotation_position="top left",
+                    )
+                    rfig.update_layout(
+                        height=300, yaxis_tickformat=".0%", legend_title="",
+                        margin=dict(l=0, r=0, t=10, b=0), xaxis_title="",
+                    )
+                    st.plotly_chart(rfig, width="stretch")
+                    st.caption(
+                        "The dotted line is the full-window σ (the headline figure); the "
+                        "rolling lines show it is a blend of calmer and more turbulent "
+                        "stretches. 36m is smoother, 12m reacts faster — if the recent 12m "
+                        "sits well above the full-window line, current conditions are "
+                        "riskier than the long-run average implies."
+                    )
