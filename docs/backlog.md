@@ -14,22 +14,26 @@ of an external code review and are correctness issues, not just enhancements.
   engine, unhedged ≠ a bug — FX vol is real risk measured in EUR; hedged vs
   unhedged matters for look-through/exposure, handled separately.)
 
-- **Honest coverage in tracked mode.** `overlap.effective_weights` drops
-  no-price holdings *before* normalising, so `risk.decompose`'s `covered` reads
-  ~100% even when holdings are missing — the vol is correct for the priced subset
-  but mislabelled as the whole book. Research mode is honest (<100%) because
-  manual weights pass the filter. Fix: track the full holding set, surface the
-  count/identity of unpriced (hence excluded) holdings, and report coverage
-  against the full book. Reconcile the README wording with the implementation.
+- **Honest coverage in tracked mode.** ✅ **Done — `67f2189`.**
+  `overlap.effective_weights` drops no-price holdings *before* normalising, so
+  `risk.decompose`'s `covered` read ~100% even when holdings were missing — the
+  vol is correct for the priced subset but was mislabelled as the whole book.
+  Fixed: the Risk tab now counts the full positioned book, reports coverage by
+  holding count (priced K/N), and lists any excluded (unpriced) holdings in a
+  warning; caption and research-mode metric relabelled; README and
+  risk-methodology.md §8 reconciled with the implementation.
 
-- **Total-return consistency across providers.** yfinance (`auto_adjust=True`)
-  returns dividend-adjusted (total-return) prices; the Stooq fallback takes raw
-  `Close` (split- but not reliably dividend-adjusted), so the same ETF can have
-  two different histories → different vol. Price-only series overstate vol on
-  distributing funds (worst for bond ETFs like IEAC). Fix: guarantee total-return
-  input everywhere — prefer **accumulating share classes** (distributions
-  reinvested, price = TR) and/or a source that returns TR; flag when a series
-  isn't adjusted.
+- **Total-return consistency across providers.** ✅ **Done (flagging) — `67f2189`.**
+  yfinance (`auto_adjust=True`) returns dividend-adjusted (total-return) prices;
+  the Stooq fallback takes raw `Close` (split- but not reliably dividend-adjusted),
+  so the same ETF can have two different histories → different vol, overstated on
+  distributing funds (worst for bond ETFs like IEAC). Shipped: `core.prices` tags
+  each series with `.attrs["source"]`, `get_panel` exposes
+  `panel.attrs["sources"]`, and the Prices tab shows a Source column + warns on
+  any Stooq-sourced series. **Still open (optional):** auto-switch the registry
+  proxies to **accumulating share classes** (price = TR regardless of source) so
+  the flag rarely fires — currently SXR8/IS3N are Acc, EXSA/IQQJ/IEAC are Dist
+  (fine while yfinance is the source; the flag catches the Stooq-fallback case).
 
 ### P2 — robustness
 
