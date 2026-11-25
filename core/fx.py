@@ -30,28 +30,45 @@ SUFFIX_CCY = {
 }
 
 
-def native_currency(ticker: str, meta_lookup=None) -> str | None:
-    """Resolve a ticker's quote currency.
+def resolve_currency(ticker: str, meta_lookup=None, registry_lookup=None) -> tuple[str | None, str]:
+    """Resolve a ticker's quote currency and say *how* it was resolved.
 
-    Order: `meta_lookup(ticker)` (e.g. provider metadata) wins, then the suffix
-    map, then a bare (suffix-less) symbol is treated as a US/USD listing. Returns
-    None when genuinely unknown — the caller then leaves the series unconverted
-    and flags it, rather than guessing and corrupting price levels.
+    Returns ``(currency, source)`` with source one of:
+      - ``"registry"``   — an explicit, auditable per-instrument pin (authoritative);
+      - ``"metadata"``   — provider metadata (validates / also resolves);
+      - ``"suffix"``     — the conservative listing-suffix map;
+      - ``"assumed-usd"``— a bare (suffix-less) symbol, *assumed* USD and flagged;
+      - ``"unknown"``    — genuinely unresolved (caller leaves it native + flags it).
+
+    Making the bare-symbol USD case an explicit ``"assumed-usd"`` source (rather
+    than a silent "USD") lets the UI mark it, per review feedback.
     """
+    if registry_lookup is not None:
+        try:
+            c = registry_lookup(ticker)
+        except Exception:
+            c = None
+        if c:
+            return c, "registry"
     if meta_lookup is not None:
         try:
             c = meta_lookup(ticker)
         except Exception:
             c = None
         if c:
-            return c
+            return c, "metadata"
     up = (ticker or "").upper()
     for suf, ccy in SUFFIX_CCY.items():
         if up.endswith(suf):
-            return ccy
+            return ccy, "suffix"
     if up and "." not in up and "=" not in up:
-        return "USD"  # bare symbol ~ US listing
-    return None
+        return "USD", "assumed-usd"  # bare symbol ~ US listing, but flagged
+    return None, "unknown"
+
+
+def native_currency(ticker: str, meta_lookup=None) -> str | None:
+    """Back-compat thin wrapper over `resolve_currency` returning just the currency."""
+    return resolve_currency(ticker, meta_lookup=meta_lookup)[0]
 
 
 def fx_base(ccy: str | None) -> tuple[str, float]:

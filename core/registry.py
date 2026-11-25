@@ -64,6 +64,28 @@ REGISTRY: dict[str, Instrument] = {
         product_id=251726),
 }
 
+# Explicit QUOTE (listing) currency of each price_ticker — the currency the price
+# SERIES is denominated in, which is what FX→EUR conversion needs. This is NOT the
+# fund's base/NAV currency (`Instrument.currency`): the S&P 500 swap has base USD
+# but its price_ticker SXR8.DE is quoted in EUR on Xetra. Authoritative + auditable;
+# consulted before provider metadata, the suffix heuristic, and any USD fallback.
+# Add a line here to pin a ticker whose quote currency a suffix can't resolve
+# (e.g. an LSE USD line, where ".L" is ambiguous).
+PRICE_TICKER_CCY: dict[str, str] = {
+    "SXR8.DE": "EUR",
+    "EXSA.DE": "EUR",
+    "IQQJ.DE": "EUR",
+    "IS3N.DE": "EUR",
+    "VAGF.DE": "EUR",
+    "IEAC.AS": "EUR",
+}
+
+
+def quote_currency_for(ticker: str) -> str | None:
+    """Explicit quote currency for `ticker`, or None if not pinned."""
+    return PRICE_TICKER_CCY.get(ticker)
+
+
 _HOLDINGS_API = (
     "https://www.ishares.com/varnish-api/blk-one01-product-data/product-data/"
     "api/v2/get-product-data?appSubType=ISHARES&appType=PRODUCT_PAGE"

@@ -227,6 +227,12 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   therefore reports coverage by **holding count** (priced $K$ of $N$) and lists
   any excluded holdings, so a missing position is never hidden behind a 100%
   figure. The reported volatility then honestly describes the priced subset.
+  Two coverage numbers matter: **count** (priced $K$ of $N$ holdings, shown in
+  both modes) and **value** (share of portfolio weight priced). In **research**
+  mode the value figure is exactly `covered` and is shown ("Value covered", e.g.
+  85%). In **tracked** mode it is **undefined**: an unpriced holding has units but
+  no price, so neither its market value nor its weight is known — there is no
+  denominator — and the € volatility is instead scaled to the priced market value.
 - **Total-return inputs.** Volatility is measured on *total-return* series
   (price + reinvested distributions). yfinance (`auto_adjust=True`) delivers
   this; the Stooq fallback is raw close (not reliably dividend-adjusted), so a
@@ -237,7 +243,12 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   \mathrm{FX}^{\text{ccy}\to\text{EUR}}_t$), so an unhedged holding's FX return is
   part of its measured volatility and local-currency returns are never pooled in one
   $\Sigma$. EUR-quoted series are unchanged (their EUR price already embeds the
-  cross; converting would double-count). This normalises the *quote* currency —
+  cross; converting would double-count). The quote currency is resolved
+  authoritatively from an explicit, auditable per-instrument pin
+  (`registry.PRICE_TICKER_CCY` — the *listing* currency, distinct from the fund's
+  base/NAV `Instrument.currency`), then provider metadata, then a conservative
+  suffix map; a bare symbol is only *assumed* USD and flagged as such in the UI
+  rather than asserted. This normalises the *quote* currency —
   hedged-vs-unhedged *exposure* is a separate look-through concern. A series whose
   currency can't be resolved, or whose cross is unavailable, is left native and
   flagged rather than silently rescaled. *Approximation:* the FX cross is
@@ -287,6 +298,13 @@ measure at different horizons: 36m is smoother, 12m reacts faster. A recent 12m
 reading well above the full-window line says current conditions are riskier than
 the long-run average implies. Each window renders only once enough history exists
 ($\geq$ 1y / $\geq$ 3y).
+
+This is a **counterfactual on today's allocation** — "how would the weights I hold
+*now* have behaved through past regimes" — **not** the realised volatility of the
+book as it was actually held. If the allocation was 80/20 two years ago and is
+60/40 today, this applies 60/40 retrospectively. A true realised-history series
+would need position/transaction history over time, which the app does not yet
+store (a future addition).
 
 ---
 

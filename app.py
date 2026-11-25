@@ -223,6 +223,7 @@ with tab_px:
     srcs = panel.attrs.get("sources", {}) if not panel.empty else {}
     curr = panel.attrs.get("currencies", {}) if not panel.empty else {}
     conv = panel.attrs.get("converted", {}) if not panel.empty else {}
+    assumed = panel.attrs.get("ccy_assumed", set()) if not panel.empty else set()
 
     def _ccy_label(tk: str) -> str:
         c = curr.get(tk, "?")
@@ -230,7 +231,8 @@ with tab_px:
             return "EUR"
         if c == "?":
             return "?"
-        return f"{c}→EUR" if conv.get(tk) else f"{c} (unconv)"
+        base = f"{c}?" if tk in assumed else c  # '?' = assumed from a bare symbol
+        return f"{base}→EUR" if conv.get(tk) else f"{base} (unconv)"
 
     cov = []
     for i in pf["ISIN"]:
@@ -271,6 +273,13 @@ with tab_px:
             "Not converted to EUR: " + ", ".join(unconv) + ". Quote currency is "
             "unknown, or its EUR cross was unavailable — returns for these may mix "
             "currencies. Everything else is in EUR (non-EUR quotes × FX)."
+        )
+    guessed = sorted(t for t in priced if t in assumed)
+    if guessed:
+        st.caption(
+            "⚠ Currency **assumed USD** (no registry pin, metadata or known suffix) "
+            "for: " + ", ".join(guessed) + ". Converted as USD→EUR — verify, or pin "
+            "it in `registry.PRICE_TICKER_CCY`."
         )
     unpriced = sorted({c["Ticker"] for c in cov if c["Priced"] == "✗" and c["Ticker"]})
     if unpriced:
@@ -666,7 +675,12 @@ with tab_risk:
                 if tracked:
                     c2.metric("± Annual € volatility", f"€ {eur_vol:,.0f}")
                 else:
-                    c2.metric("Priced weight", f"{dec['covered']:.0%}")
+                    c2.metric(
+                        "Value covered", f"{dec['covered']:.0%}",
+                        help="Share of portfolio weight that is priced and enters the "
+                             "risk estimate. Undefined in tracked mode — an unpriced "
+                             "holding has no market value, so there is no denominator.",
+                    )
                 c3.metric(
                     "Diversification",
                     f"{dec['ann_vol']/dec['wavg_vol']:.2f}×" if dec["wavg_vol"] else "—",
@@ -750,5 +764,8 @@ with tab_risk:
                         "rolling lines show it is a blend of calmer and more turbulent "
                         "stretches. 36m is smoother, 12m reacts faster — if the recent 12m "
                         "sits well above the full-window line, current conditions are "
-                        "riskier than the long-run average implies."
+                        "riskier than the long-run average implies. **Note:** this applies "
+                        "*today's* weights across all history — a 'how would my current "
+                        "allocation have behaved' view, not the realised volatility of the "
+                        "book as you actually held it (that needs position history)."
                     )

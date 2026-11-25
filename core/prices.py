@@ -12,7 +12,7 @@ import os
 
 import pandas as pd
 
-from core import fx
+from core import fx, registry
 
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "data", "prices")
 _CCY_CACHE = os.path.join(_CACHE_DIR, "_ccy.json")
@@ -159,6 +159,8 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
       - ``currencies``: ticker -> resolved quote currency ('?' if unknown).
       - ``converted``:  ticker -> True (converted to EUR) / False (non-EUR but the
                         cross was unavailable, so left in native currency).
+      - ``ccy_assumed``: set of tickers whose currency was *assumed* USD from a
+                        bare symbol (no registry pin / metadata / suffix).
     """
     series, sources = {}, {}
     for t in dict.fromkeys(t for t in tickers if t):
@@ -169,10 +171,11 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
     if not series:
         return pd.DataFrame()
 
-    # Normalise to EUR. Resolve each quote currency, then fetch each needed
-    # <base>EUR cross at most once.
+    # Normalise to EUR. Resolve each quote currency (explicit registry pin →
+    # metadata → suffix → assumed-USD), then fetch each needed <base>EUR cross once.
     currencies: dict[str, str] = {}
     converted: dict[str, bool] = {}
+    assumed: set[str] = set()
     fx_cache: dict[str, pd.Series | None] = {}
 
     def _cross(base: str) -> pd.Series | None:
@@ -181,8 +184,12 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
         return fx_cache[base]
 
     for t, s in list(series.items()):
-        ccy = fx.native_currency(t, _currency_meta)
+        ccy, src = fx.resolve_currency(
+            t, meta_lookup=_currency_meta, registry_lookup=registry.quote_currency_for
+        )
         currencies[t] = ccy or "?"
+        if src == "assumed-usd":
+            assumed.add(t)
         base, _scale = fx.fx_base(ccy)
         if ccy and base != "EUR":
             conv, ok = fx.to_eur(s, ccy, _cross(base))
@@ -193,4 +200,5 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
     panel.attrs["sources"] = sources
     panel.attrs["currencies"] = currencies
     panel.attrs["converted"] = converted
+    panel.attrs["ccy_assumed"] = assumed
     return panel
