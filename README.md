@@ -64,15 +64,15 @@ The **Risk** tab computes annualized volatility from daily return covariance
 (`√(wᵀΣw) × √252`) and decomposes it. Select one portfolio for a single-book view
 or several (same weight source) to split risk **core vs satellite**. It shows:
 
-- **Annualized vol** (%), and for tracked books the **± annual € volatility**
-  (vol × priced capital).
-- **Diversification** = portfolio vol ÷ weighted-average standalone vol (<1 = benefit).
+- **Annualized volatility** (%), and for tracked books the **± annual € volatility**
+  (volatility × priced capital).
+- **Diversification** = portfolio volatility ÷ weighted-average standalone volatility (<1 = benefit).
 - **Risk contribution by sleeve** — capital % vs risk % (a 25%-capital satellite
   can be 40% of the risk).
 - **Risk contribution by holding** — each holding's share of total risk, which
-  sums to 100%, plus its standalone vol.
+  sums to 100%, plus its standalone volatility.
 
-Weights are `vol-share × within-portfolio weight` (sleeve-tagged); the % split is
+Weights are `volatility-share × within-portfolio weight` (sleeve-tagged); the % split is
 identical for tracked and research, tracked adds the € figures. `core/risk.py`
 renormalizes over the priced subset; the Risk tab reports coverage by **holding
 count** (priced K/N) and lists any excluded (unpriced) holdings — so a missing
@@ -86,7 +86,7 @@ current weights) over a dotted full-window-σ reference — so a calm recent str
 is distinguishable from a 2022-style shock. The rolling basis reconciles exactly
 with the headline σ.
 
-**Full derivations** (returns → covariance → portfolio vol → Euler risk
+**Full derivations** (returns → covariance → portfolio volatility → Euler risk
 contribution → sleeve/€ attribution), with the math mapped line-for-line to the
 code, are in **[docs/risk-methodology.md](docs/risk-methodology.md)**.
 
@@ -226,5 +226,5 @@ auto-populate `INDEX_REF`.
 See **[docs/backlog.md](docs/backlog.md)**. Highlights: risk-engine correctness
 from a code review (enforce EUR total returns, honest tracked-mode coverage,
 total-return consistency across data providers), robustness (calendar alignment /
-weekly returns, rolling 12m & 36m vol), the iShares product-screener catalog for
+weekly returns, rolling 12m & 36m volatility), the iShares product-screener catalog for
 the resolver, and constituent-level correlation / optimisation / auto-refresh.

@@ -97,8 +97,8 @@ $$ \Sigma_{\text{ann}} = A\,\Sigma_{\text{daily}},
 
 This is why we can keep everything in daily units and only scale at the end.
 
-> **Code.** `ann = sqrt(252)`; `ann_vol = sigma * ann`; each standalone vol is
-> `sqrt(cov[i,i]) * ann`. If returns are autocorrelated (volatility clustering),
+> **Code.** `ann = sqrt(252)`; `ann_vol = sigma * ann`; each standalone volatility
+> is `sqrt(cov[i,i]) * ann`. If returns are autocorrelated (volatility clustering),
 > $\sqrt{252}$ over- or under-states the true annual figure — daily sampling with
 > $\sqrt{252}$ is the convention, not an exact identity.
 
@@ -108,7 +108,7 @@ This is why we can keep everything in daily units and only scale at the end.
 
 We want each holding's *share* of total portfolio risk. The key fact is that
 $\sigma_p(\mathbf{w}) = \sqrt{\mathbf{w}^\top\Sigma\mathbf{w}}$ is **positively
-homogeneous of degree 1**: scaling all weights by $c$ scales vol by $c$, i.e.
+homogeneous of degree 1**: scaling all weights by $c$ scales volatility by $c$, i.e.
 $\sigma_p(c\mathbf{w}) = c\,\sigma_p(\mathbf{w})$. **Euler's theorem** for such
 functions gives an *exact additive* split into per-asset terms:
 
@@ -142,8 +142,8 @@ position that hedges the book can even have **negative** risk contribution.
 
 ## 5. Diversification ratio
 
-To quantify the benefit from §2, compare the portfolio vol to the
-capital-weighted average of the holdings' standalone vols $\sigma_i=\sqrt{\Sigma_{ii}}$:
+To quantify the benefit from §2, compare the portfolio volatility to the
+capital-weighted average of the holdings' standalone volatilities $\sigma_i=\sqrt{\Sigma_{ii}}$:
 
 $$ \text{DR} = \frac{\sigma_p}{\sum_{i} w_i\,\sigma_i}. $$
 
@@ -222,16 +222,16 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   are built — which makes the *weight-based* `covered` read ~100%. The Risk tab
   therefore reports coverage by **holding count** (priced $K$ of $N$) and lists
   any excluded holdings, so a missing position is never hidden behind a 100%
-  figure. The reported vol then honestly describes the priced subset.
+  figure. The reported volatility then honestly describes the priced subset.
 - **Total-return inputs.** Volatility is measured on *total-return* series
   (price + reinvested distributions). yfinance (`auto_adjust=True`) delivers
   this; the Stooq fallback is raw close (not reliably dividend-adjusted), so a
-  Stooq-sourced distributing fund can show inflated vol — the Prices tab flags
+  Stooq-sourced distributing fund can show inflated volatility — the Prices tab flags
   any Stooq series, and accumulating share classes avoid the issue entirely.
 - **Common base currency (EUR).** Returns are taken on EUR series. A non-EUR
   *quote* is converted first ($p^{\text{EUR}}_t = p^{\text{ccy}}_t \cdot
   \mathrm{FX}^{\text{ccy}\to\text{EUR}}_t$), so an unhedged holding's FX return is
-  part of its measured vol and local-currency returns are never pooled in one
+  part of its measured volatility and local-currency returns are never pooled in one
   $\Sigma$. EUR-quoted series are unchanged (their EUR price already embeds the
   cross; converting would double-count). This normalises the *quote* currency —
   hedged-vs-unhedged *exposure* is a separate look-through concern. A series whose
@@ -280,14 +280,14 @@ the long-run average implies. Each window renders only once enough history exist
 |---|---|---|
 | Daily returns | $r_t = P_t/P_{t-1}-1$ | `risk.decompose` → `pct_change` |
 | Covariance $\Sigma$ | §1.3 | `risk.decompose` → `rets.cov()` |
-| Portfolio vol $\sigma_p$ | $\sqrt{\mathbf{w}^\top\Sigma\mathbf{w}}$ | `risk.decompose` → `sqrt(w @ cov @ w)` |
+| Portfolio volatility $\sigma_p$ | $\sqrt{\mathbf{w}^\top\Sigma\mathbf{w}}$ | `risk.decompose` → `sqrt(w @ cov @ w)` |
 | Annualise | $\times\sqrt{252}$ | `risk.decompose` → `ann` |
 | Component RC | $w_i(\Sigma\mathbf{w})_i/\sigma_p$ | `risk.decompose` → `rc`, `rc_frac` |
-| Standalone vol | $\sqrt{\Sigma_{ii}}\cdot\sqrt{252}$ | `risk.decompose` → `standalone` |
+| Standalone volatility | $\sqrt{\Sigma_{ii}}\cdot\sqrt{252}$ | `risk.decompose` → `standalone` |
 | Diversification | $\sigma_p/\sum_i w_i\sigma_i$ | `risk.decompose` → `wavg_vol` |
 | Within-weights | §6.1 | `overlap.effective_weights` |
 | Volume / share | §6.2 | `overlap.portfolio_volume`, Risk tab |
 | Sleeve RC | §6.3 | Risk tab → `srisk` |
 | € risk | §7 | Risk tab → `eur_vol` |
 | Portfolio returns | $r_{p,t}=\mathbf{w}^\top\mathbf{r}_t$ | `risk.portfolio_returns` |
-| Rolling vol (12m/36m) | §9 | `risk.rolling_vol` → Risk tab |
+| Rolling volatility (12m/36m) | §9 | `risk.rolling_vol` → Risk tab |

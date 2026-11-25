@@ -16,14 +16,14 @@ of an external code review and are correctness issues, not just enhancements.
   missing cross leaves the series native and **flags** it — never a silent rescale.
   Surfaced via the Prices `Ccy` column (`USD→EUR` / `USD (unconv)` / `?`) and a
   warning; README + risk-methodology.md §8 updated. (As noted: unhedged ≠ a bug —
-  FX vol is real risk in EUR; hedged-vs-unhedged exposure stays a look-through
+  FX volatility is real risk in EUR; hedged-vs-unhedged exposure stays a look-through
   concern.) **Still open (optional):** auto-switch registry proxies to Acc classes
   interacts with this — a EUR-listed Acc proxy needs no conversion *and* no TR flag.
 
 - **Honest coverage in tracked mode.** ✅ **Done — `67f2189`.**
   `overlap.effective_weights` drops no-price holdings *before* normalising, so
   `risk.decompose`'s `covered` read ~100% even when holdings were missing — the
-  vol is correct for the priced subset but was mislabelled as the whole book.
+  volatility is correct for the priced subset but was mislabelled as the whole book.
   Fixed: the Risk tab now counts the full positioned book, reports coverage by
   holding count (priced K/N), and lists any excluded (unpriced) holdings in a
   warning; caption and research-mode metric relabelled; README and
@@ -35,7 +35,7 @@ of an external code review and are correctness issues, not just enhancements.
 - **Total-return consistency across providers.** ✅ **Done (flagging) — `67f2189`.**
   yfinance (`auto_adjust=True`) returns dividend-adjusted (total-return) prices;
   the Stooq fallback takes raw `Close` (split- but not reliably dividend-adjusted),
-  so the same ETF can have two different histories → different vol, overstated on
+  so the same ETF can have two different histories → different volatility, overstated on
   distributing funds (worst for bond ETFs like IEAC). Shipped: `core.prices` tags
   each series with `.attrs["source"]`, `get_panel` exposes
   `panel.attrs["sources"]`, and the Prices tab shows a Source column + warns on

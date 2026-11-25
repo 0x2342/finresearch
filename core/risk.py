@@ -38,7 +38,7 @@ def decompose(panel, weights: dict[str, float]) -> dict | None:
     standalone = {t: float(np.sqrt(max(cov[i, i], 0.0)) * ann) for i, t in enumerate(tickers)}
     wavg_vol = float(sum(w[i] * standalone[t] for i, t in enumerate(tickers)))
 
-    sigma = float(np.sqrt(max(w @ cov @ w, 0.0)))         # daily portfolio vol
+    sigma = float(np.sqrt(max(w @ cov @ w, 0.0)))         # daily portfolio volatility
     if sigma <= 0:
         rc_frac = {t: 0.0 for t in tickers}
     else:

@@ -645,7 +645,7 @@ with tab_risk:
                 st.warning("Not enough overlapping price history to compute risk.")
             else:
                 tracked = rm == "tracked"
-                eur_vol = dec["ann_vol"] * dec["covered"] * tvol   # € vol of priced capital
+                eur_vol = dec["ann_vol"] * dec["covered"] * tvol   # € volatility of priced capital
 
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Annualized volatility", f"{dec['ann_vol']:.1%}")
@@ -656,7 +656,7 @@ with tab_risk:
                 c3.metric(
                     "Diversification",
                     f"{dec['ann_vol']/dec['wavg_vol']:.2f}×" if dec["wavg_vol"] else "—",
-                    help="portfolio vol ÷ weighted-average standalone vol (<1 = benefit)",
+                    help="portfolio volatility ÷ weighted-average standalone volatility (<1 = benefit)",
                 )
                 st.caption(
                     f"{dec['obs']} daily obs · {dec['start'].date()} → {dec['end'].date()} "
@@ -696,7 +696,7 @@ with tab_risk:
                     {"Holding": tick_name.get(t, t), "Ticker": t,
                      "Weight %": round(dec["w"][t] * 100, 1),
                      "Risk %": round(dec["rc_frac"][t] * 100, 1),
-                     "Standalone vol": f"{dec['standalone'][t]:.0%}"}
+                     "Standalone volatility": f"{dec['standalone'][t]:.0%}"}
                     for t in dec["tickers"]
                 ]).sort_values("Risk %", ascending=False)
                 fig = px.bar(hdf.head(20), x="Risk %", y="Holding", orientation="h")
@@ -718,7 +718,7 @@ with tab_risk:
                         "volatility — the window here is too short."
                     )
                 else:
-                    rfig = px.line(rvol, labels={"value": "annualized vol", "variable": "window"})
+                    rfig = px.line(rvol, labels={"value": "annualized volatility", "variable": "window"})
                     rfig.add_hline(
                         y=dec["ann_vol"], line_dash="dot", line_color="#888",
                         annotation_text="full-window σ", annotation_position="top left",
