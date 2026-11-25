@@ -65,24 +65,25 @@ remaining weakness, and added three refinements + a stretch goal. Ordered.
   an explicit stale-price staleness rule beyond ffill — weekly ffill is the
   convention; revisit only if a specific illiquid holding misbehaves.
 
-- **[2] Market-value coverage (not just holding count).** Research mode already
-  reports it — the "Priced weight" metric *is* `dec['covered']` = priced weight ÷
-  total weight (e.g. 85%); relabel it **"Value covered"** and show count + value
-  together. Tracked mode **cannot** compute it: an unpriced holding has units but
-  no price, so its market value — and the denominator — is unknown. State that
-  explicitly (value coverage undefined in tracked; €-vol is already scaled to
-  priced MV) rather than implying a number exists.
+- **[2] Market-value coverage (not just holding count).** ✅ **Done — `b098a21`.**
+  Research mode already computed it — relabelled the metric **"Value covered"**
+  (= `dec['covered']`, priced ÷ total weight, e.g. 85%) with help, so count (K/N,
+  caption) and value (%) sit together. Tracked mode is **undefined** (an unpriced
+  holding has no market value → no denominator); documented, with € vol scaled to
+  priced MV as before.
 
-- **[3] Explicit, auditable currency per instrument.** `fx.native_currency` falls
-  back to USD for any suffix-less ticker — convenient but silently confident. Add a
-  `currency` field to `registry` instruments (authoritative), keep provider
-  metadata as validation, and **flag** the pure bare-symbol→USD assumption in the
-  Ccy column (e.g. `USD?`) instead of asserting it.
+- **[3] Explicit, auditable currency per instrument.** ✅ **Done — `b098a21`.**
+  Added `registry.PRICE_TICKER_CCY` + `quote_currency_for()` — the *quote*/listing
+  currency, explicitly distinct from the fund base `Instrument.currency` (using the
+  base would re-introduce double-counting). `fx.resolve_currency` returns
+  `(ccy, source)` with precedence registry > metadata > suffix > **assumed-usd** >
+  unknown; the bare-symbol USD case is flagged (`USD?→EUR` in the Ccy column + a
+  caption), not asserted.
 
-- **[4] Constant-weight vs actual-weight history.** `rolling_vol` applies today's
-  weights to all history (a "how would my current allocation have behaved" what-if),
-  which is documented and deliberate — but it is **not** the realised volatility of
-  the book as actually held. Strengthen the caption/doc to say so plainly; a true
+- **[4] Constant-weight vs actual-weight history.** ✅ **Done — `b098a21`.**
+  `rolling_vol` applies today's weights to all history (a documented "how would my
+  current allocation have behaved" what-if). Caption + methodology §9 now state
+  plainly it is **not** the realised volatility of the book as held. A true
   actual-weights series needs transaction/valuation history we don't yet store
   (future, gated on that data).
 
