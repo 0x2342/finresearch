@@ -7,12 +7,18 @@ of an external code review and are correctness issues, not just enhancements.
 
 ### P1 — correctness
 
-- **Common base currency (EUR total returns).** Don't rely on picking EUR-listed
-  proxies; **enforce** a base currency. Convert any non-EUR series to EUR (price ×
-  FX) before computing returns, so FX exposure of unhedged funds is captured
-  consistently and local-currency returns are never pooled. (Note: for the *risk*
-  engine, unhedged ≠ a bug — FX vol is real risk measured in EUR; hedged vs
-  unhedged matters for look-through/exposure, handled separately.)
+- **Common base currency (EUR total returns).** ✅ **Done — `a28ea33`.**
+  `get_panel` now normalises every series to EUR *before* returns are taken:
+  `core.fx` resolves each ticker's quote currency (provider metadata → conservative
+  suffix map → bare symbol = USD → unknown), fetches each `<base>EUR=X` cross once,
+  and converts (price × FX; `GBp` pence scaled ÷100). EUR-quoted series are left
+  untouched (their EUR price already embeds the cross). An unresolved currency or a
+  missing cross leaves the series native and **flags** it — never a silent rescale.
+  Surfaced via the Prices `Ccy` column (`USD→EUR` / `USD (unconv)` / `?`) and a
+  warning; README + risk-methodology.md §8 updated. (As noted: unhedged ≠ a bug —
+  FX vol is real risk in EUR; hedged-vs-unhedged exposure stays a look-through
+  concern.) **Still open (optional):** auto-switch registry proxies to Acc classes
+  interacts with this — a EUR-listed Acc proxy needs no conversion *and* no TR flag.
 
 - **Honest coverage in tracked mode.** ✅ **Done — `67f2189`.**
   `overlap.effective_weights` drops no-price holdings *before* normalising, so
