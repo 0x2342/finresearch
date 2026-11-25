@@ -53,10 +53,15 @@ of an external code review and are correctness issues, not just enhancements.
   and **weekly (e.g. Fri–Fri) returns as a robustness check** to damp holiday /
   closing-time mismatch.
 
-- **Estimator stability / regime awareness.** A single full-window covariance
-  blends regimes (COVID, 2022 rate shock, AI concentration). Keep the historical
-  estimator but also show **rolling 12-month and 36-month volatility** so current
-  conditions are distinguishable from the long-run average.
+- **Estimator stability / regime awareness.** ✅ **Done — `87a61f0`.** A single
+  full-window covariance blends regimes (COVID, 2022 rate shock, AI
+  concentration). Shipped: the Risk tab plots **rolling 12-month (252d) and
+  36-month (756d) annualised volatility** of the book at constant current weights,
+  over a dotted full-window σ reference. `risk.portfolio_returns` +
+  `risk.rolling_vol`; the rolling basis reconciles exactly with the headline σ
+  (full-window std = `decompose['ann_vol']`). Each window renders only once its
+  history exists; risk-methodology.md §9 documents it. The full-window estimator
+  is unchanged — this is an added lens, not a replacement.
 
 ## Resolver & look-through
 
