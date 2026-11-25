@@ -49,17 +49,21 @@ of an external code review and are correctness issues, not just enhancements.
 Second review (re-checked code vs docs) reaffirmed the calendar item as the top
 remaining weakness, and added three refinements + a stretch goal. Ordered.
 
-- **[1] Trading-calendar alignment & weekly returns.** `pct_change().dropna(how="any")`
-  keeps only the intersection of trading days (loses data) and compares
-  non-synchronous closes across US/JP/EU/EM. Mechanism (corrected): complete-case
-  `dropna` *drops* misaligned days rather than keeping mismatched-horizon returns,
-  so the damage is (a) sample loss from every market's holidays and (b) the Epps
-  effect — a US close (~21:00 UTC) and a Tokyo close (~06:00 UTC) on the same
-  calendar day sit ~15h apart, so cross-market co-movement shows up a day late and
-  daily correlations are biased **down**. Fix: add a **weekly (Fri–Fri) return
-  sampling** option (resample to last valid obs per week, then returns) as the
-  primary robustness view for globally diversified books; keep daily as secondary.
-  Apply to both Correlation and Risk tabs.
+- **[1] Trading-calendar alignment & weekly returns.** ✅ **Done — `af53b4b`.**
+  `pct_change().dropna(how="any")` keeps only the intersection of trading days
+  (loses data) and compares non-synchronous closes across US/JP/EU/EM. Mechanism
+  (corrected): complete-case `dropna` *drops* misaligned days rather than keeping
+  mismatched-horizon returns, so the damage is (a) sample loss from every market's
+  holidays and (b) the Epps effect — a US close (~21:00 UTC) and a Tokyo close
+  (~06:00 UTC) on the same calendar day sit ~15h apart, so cross-market co-movement
+  shows up a day late and daily correlations are biased **down**. Shipped: a
+  sidebar **Return frequency** toggle (Daily / Weekly Fri–Fri); `prices.to_frequency`
+  resamples on a Friday valuation convention; `decompose`/`rolling_vol` take
+  `periods_per_year` (252↔52) so annualisation and rolling windows (252/756 ↔
+  52/156) track the frequency. Drives both Correlation and Risk; daily stays the
+  default/secondary view; risk-methodology.md §8 documents it. Not done (deliberate):
+  an explicit stale-price staleness rule beyond ffill — weekly ffill is the
+  convention; revisit only if a specific illiquid holding misbehaves.
 
 - **[2] Market-value coverage (not just holding count).** Research mode already
   reports it — the "Priced weight" metric *is* `dec['covered']` = priced weight ÷
