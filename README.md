@@ -1,8 +1,8 @@
-# Financial Research — Prototype
+# Financial Research
 
 Standalone pure-Python web app (Streamlit). No node, no reverse proxy.
-Implements blueprint v1: ISIN portfolio → price series + correlation, and
-**look-through overlap** (the differentiator).
+ISIN portfolio → price series + correlation, EUR-normalised risk decomposition,
+and **look-through overlap** (the differentiator).
 
 ## Run
 
@@ -43,10 +43,11 @@ portfolio; a legacy single `data/portfolio.csv` is migrated into it automaticall
   six core holdings are seeded from factsheet tags (`core/exposures.py`), so
   pairwise overlap, portfolio aggregate exposure, and A/B comparison render with
   no network.
-- **Prices / Correlation / Value** — need network. Series come from yfinance with
-  a Stooq fallback, cached to `data/prices/*.parquet`. Seed `Ticker`s are best
-  guesses (two are confirmed: `ESWP.AS`, `FUJI.PA`); fix any that fail in the
-  sidebar and the app re-fetches.
+- **Prices / Correlation / Value / Risk / Allocation** — need network. Series come
+  from yfinance with a Stooq fallback, cached to `data/prices/*.parquet`. The
+  registry ships verified EUR proxies (`SXR8.DE`, `EXSA.DE`, `IQQJ.DE`, `IS3N.DE`,
+  `VAGF.DE`, `IEAC.AS`); fix any ticker that fails in the sidebar and the app
+  re-fetches.
 
 ## Allocation (satellite sizing)
 
@@ -79,17 +80,20 @@ satellite**. It shows:
 
 Weights are `volatility-share × within-portfolio weight` (sleeve-tagged); the % split is
 identical for tracked and research, tracked adds the € figures. `core/risk.py`
-renormalizes over the priced subset; the Risk tab reports coverage by **holding
-count** (priced K/N) and lists any excluded (unpriced) holdings — so a missing
-position is never hidden behind a 100% figure. The window is set by the
-shortest-history ticker, and correlations rise toward 1 in a crash — so realised
-drawdown risk can exceed this.
+renormalizes over the priced subset and reports coverage two ways — **holding
+count** (priced K/N, both modes) and, in research mode, **value covered** (% of
+weight priced) — plus a list of any excluded (unpriced) holdings, so a missing
+position is never hidden behind a 100% figure. (Tracked mode can't define value
+coverage: an unpriced holding has no market value; its € volatility is scaled to
+priced capital.) The window is set by the shortest-history ticker, and
+correlations rise toward 1 in a crash — so realised drawdown risk can exceed this.
 
 Because one full-window number averages across regimes, the tab also plots
 **rolling 12-month and 36-month annualized volatility** (book return at constant
 current weights) over a dotted full-window-σ reference — so a calm recent stretch
 is distinguishable from a 2022-style shock. The rolling basis reconciles exactly
-with the headline σ.
+with the headline σ. Note it applies *today's* weights across all history — a
+what-if on the current allocation, not the realised volatility of the book as held.
 
 **Full derivations** (returns → covariance → portfolio volatility → Euler risk
 contribution → sleeve/€ attribution), with the math mapped line-for-line to the
@@ -116,11 +120,14 @@ EUR (price × FX cross) **before** any returns are taken, so an unhedged fund's 
 move is captured in EUR and local-currency returns are never pooled into one
 covariance. EUR-quoted series pass through untouched — a EUR-listed S&P 500 ETF
 already embeds the USD move, so converting it would double-count. Quote currency
-is resolved from provider metadata, then a conservative listing-suffix map
-(`.DE`→EUR, `.SW`→CHF, bare symbol→USD, …); an unresolved currency or a missing
-cross leaves the series in its native currency and **flags** it (`Ccy` column
-shows `USD→EUR` when converted, `USD (unconv)` / `?` when not). Pence-quoted LSE
-lines (`GBp`) are scaled ÷100 before the GBP cross.
+is resolved from an explicit, auditable per-instrument registry pin
+(`registry.PRICE_TICKER_CCY` — the *listing* currency, distinct from the fund's
+base/NAV `Instrument.currency`), then provider metadata, then a conservative
+suffix map (`.DE`→EUR, `.SW`→CHF, …); a bare symbol is only *assumed* USD and
+flagged. An unresolved currency or a missing cross leaves the series native and
+**flagged** (`Ccy` column: `USD→EUR` converted, `USD?→EUR` assumed-then-converted,
+`USD (unconv)` / `?` not converted). Pence-quoted LSE lines (`GBp`) are scaled ÷100
+before the GBP cross.
 
 Registry ships long-history EUR proxies: S&P 500 `SXR8.DE`, STOXX 600 `EXSA.DE`,
 MSCI Japan `IQQJ.DE`, MSCI EM `IS3N.DE`.
@@ -194,9 +201,11 @@ like Global Aggregate stays low vs equities because it genuinely is government d
 
 | Module | Role |
 |---|---|
-| `core/registry.py` | Resolver seed: ISIN → index + reference ticker/holdings |
+| `core/registry.py` | Resolver seed: ISIN → index + reference ticker/holdings; explicit quote-currency pins |
 | `core/exposures.py` | Seeded factsheet look-through (sector/country), provenance-tagged |
-| `core/prices.py` | Price cache layer (yfinance → Stooq → parquet) |
+| `core/prices.py` | Price cache (yfinance → Stooq → parquet) + EUR normalisation + daily/weekly resampling |
+| `core/fx.py` | Currency normalisation: quote-currency resolution + price → EUR conversion |
+| `core/risk.py` | Volatility, Euler risk decomposition, rolling 12m/36m volatility |
 | `core/holdings.py` | Parse iShares Detailed Holdings CSV → names + aggregate sector/country |
 | `core/providers.py` | Look-through providers + tier resolution (name-level ↔ factsheet) |
 | `core/store.py` | Portfolios, per-fund source URLs, persistence |
@@ -228,8 +237,11 @@ auto-populate `INDEX_REF`.
 
 ## Next (deferred)
 
-See **[docs/backlog.md](docs/backlog.md)**. Highlights: risk-engine correctness
-from a code review (enforce EUR total returns, honest tracked-mode coverage,
-total-return consistency across data providers), robustness (calendar alignment /
-weekly returns, rolling 12m & 36m volatility), the iShares product-screener catalog for
-the resolver, and constituent-level correlation / optimisation / auto-refresh.
+See **[docs/backlog.md](docs/backlog.md)**. The risk-engine correctness and
+robustness items from two code reviews are **done**: EUR currency normalisation,
+honest holding-count + value coverage, total-return source flagging,
+calendar-aware weekly (Fri–Fri) returns, rolling 12m/36m volatility, and explicit
+auditable currency resolution. Still open: an actual-weights *realised*-history
+series (needs position history) and historical stress tests (2008 / 2020 / 2022);
+the iShares product-screener catalog for the resolver; and constituent-level
+correlation / optimisation / auto-refresh.
