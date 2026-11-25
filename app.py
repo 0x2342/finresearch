@@ -179,6 +179,7 @@ tab_px, tab_corr, tab_overlap, tab_value, tab_alloc, tab_risk = st.tabs(
 # --------------------------------------------------------------------------- #
 with tab_px:
     priced = list(panel.columns) if not panel.empty else []
+    srcs = panel.attrs.get("sources", {}) if not panel.empty else {}
     cov = []
     for i in pf["ISIN"]:
         t = ticker_of.get(i, "")
@@ -187,18 +188,27 @@ with tab_px:
             yrs = round((s.index[-1] - s.index[0]).days / 365.25, 1)
             cov.append({
                 "Name": name_of[i], "Ticker": t, "Priced": "✓",
+                "Source": srcs.get(t, "?"),
                 "From": str(s.index[0].date()), "Points": int(len(s)),
                 "Years": yrs, "Flag": "⚠ short" if yrs < MIN_HISTORY_YEARS else "",
             })
         else:
             cov.append({"Name": name_of[i], "Ticker": t, "Priced": "✗",
-                        "From": "—", "Points": 0, "Years": 0.0, "Flag": ""})
+                        "Source": "—", "From": "—", "Points": 0, "Years": 0.0, "Flag": ""})
     st.markdown("**Data coverage** — check each proxy actually pulls and has enough history.")
     st.dataframe(pd.DataFrame(cov), width="stretch", hide_index=True)
     st.caption(
         f"⚠ marks under {MIN_HISTORY_YEARS:g}y history — too short for stable covariance; "
         "use a longer proxy on the same index where one exists (bond sleeves often can't)."
     )
+    if "stooq" in srcs.values():
+        stq = sorted(t for t, v in srcs.items() if v == "stooq")
+        st.warning(
+            "Source = **stooq** for: " + ", ".join(stq) + ". Stooq's raw close is not "
+            "reliably dividend-adjusted, so returns/volatility can be overstated for "
+            "distributing funds — yfinance series are total-return. Prefer an "
+            "accumulating share class, or a ticker yfinance covers."
+        )
     unpriced = sorted({c["Ticker"] for c in cov if c["Priced"] == "✗" and c["Ticker"]})
     if unpriced:
         st.warning(
@@ -541,6 +551,27 @@ with tab_risk:
                     tick_sleeve[t][nm] = tick_sleeve[t].get(nm, 0.0) + cw
                     tick_name.setdefault(t, nn.get(isin, t))
 
+            # Honest coverage: positioned holdings vs those we could actually price.
+            # (effective_weights drops unpriced holdings in tracked mode, so dec's
+            # weight `covered` reads ~100% — count the full book here instead.)
+            priced_cols = set(rpanel.columns)
+            positioned, excluded, seen = [], [], set()
+            for s in rsel:
+                for r in rrows[s]:
+                    isin = r["ISIN"]
+                    if isin in seen:
+                        continue
+                    has_pos = (_f(r.get("Units")) > 0) if rm == "tracked" else (_f(r.get("Weight")) > 0)
+                    if not has_pos:
+                        continue
+                    seen.add(isin)
+                    positioned.append(isin)
+                    t = str(r.get("Ticker", "")).strip()
+                    if not t or t not in priced_cols:
+                        excluded.append(r.get("Name") or isin)
+            n_tot = len(positioned)
+            n_priced = n_tot - len(excluded)
+
             dec = risk.decompose(rpanel, tick_w)
             if dec is None:
                 st.warning("Not enough overlapping price history to compute risk.")
@@ -553,7 +584,7 @@ with tab_risk:
                 if tracked:
                     c2.metric("± Annual € volatility", f"€ {eur_vol:,.0f}")
                 else:
-                    c2.metric("Priced coverage", f"{dec['covered']:.0%}")
+                    c2.metric("Priced weight", f"{dec['covered']:.0%}")
                 c3.metric(
                     "Diversification",
                     f"{dec['ann_vol']/dec['wavg_vol']:.2f}×" if dec["wavg_vol"] else "—",
@@ -561,10 +592,16 @@ with tab_risk:
                 )
                 st.caption(
                     f"{dec['obs']} daily obs · {dec['start'].date()} → {dec['end'].date()} "
-                    f"· priced coverage {dec['covered']:.0%}. Window is set by the "
+                    f"· priced {n_priced}/{n_tot} holdings. Window is set by the "
                     "shortest-history ticker; correlations rise toward 1 in a crash, so "
                     "realised drawdown risk can exceed this."
                 )
+                if excluded:
+                    st.warning(
+                        f"{len(excluded)} positioned holding(s) excluded — no price: "
+                        + ", ".join(sorted(set(excluded)))
+                        + f". Volatility and € figures cover the {n_priced} priced holding(s) only."
+                    )
                 if dec["obs"] < 60:
                     st.warning(f"Only {dec['obs']} observations — volatility estimate is noisy.")
 

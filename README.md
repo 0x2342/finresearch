@@ -69,9 +69,11 @@ or several (same weight source) to split risk **core vs satellite**. It shows:
 
 Weights are `vol-share × within-portfolio weight` (sleeve-tagged); the % split is
 identical for tracked and research, tracked adds the € figures. `core/risk.py`
-renormalizes over the priced subset and reports `covered`; the window is set by
-the shortest-history ticker, and correlations rise toward 1 in a crash — so
-realised drawdown risk can exceed this.
+renormalizes over the priced subset; the Risk tab reports coverage by **holding
+count** (priced K/N) and lists any excluded (unpriced) holdings — so a missing
+position is never hidden behind a 100% figure. The window is set by the
+shortest-history ticker, and correlations rise toward 1 in a crash — so realised
+drawdown risk can exceed this.
 
 **Full derivations** (returns → covariance → portfolio vol → Euler risk
 contribution → sleeve/€ attribution), with the math mapped line-for-line to the
@@ -87,7 +89,8 @@ Xetra (`.DE`) listings (better yfinance coverage than `.PA`/`.AS`) and avoid new
 series, so one short series truncates everything.
 
 The **Data coverage** panel in the Prices tab shows, per holding, whether it
-priced, its start date, point count and years; the Correlation tab shows the
+priced, its **source** (yfinance = total-return / dividend-adjusted; stooq = raw
+close, flagged), start date, point count and years; the Correlation tab shows the
 overlapping window and lists any excluded (unpriced) instruments. Use these to
 vet a proxy, then set the ticker in the sidebar editor (it persists).
 

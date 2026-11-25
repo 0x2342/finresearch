@@ -216,8 +216,18 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
 ## 8. Coverage, estimation, and caveats
 
 - **Priced subset & renormalisation.** Only tickers with price data enter
-  $\Sigma$. The remaining weight is renormalised to 1 and `covered` reports the
-  fraction of book weight that was priced: `covered = raw.sum(); w = raw/covered`.
+  $\Sigma$; the remaining weight is renormalised to 1
+  (`covered = raw.sum(); w = raw/covered`). In **tracked** mode a holding with no
+  price cannot be valued ($u_i p_i$ needs $p_i$), so it is dropped when weights
+  are built — which makes the *weight-based* `covered` read ~100%. The Risk tab
+  therefore reports coverage by **holding count** (priced $K$ of $N$) and lists
+  any excluded holdings, so a missing position is never hidden behind a 100%
+  figure. The reported vol then honestly describes the priced subset.
+- **Total-return inputs.** Volatility is measured on *total-return* series
+  (price + reinvested distributions). yfinance (`auto_adjust=True`) delivers
+  this; the Stooq fallback is raw close (not reliably dividend-adjusted), so a
+  Stooq-sourced distributing fund can show inflated vol — the Prices tab flags
+  any Stooq series, and accumulating share classes avoid the issue entirely.
 - **Estimation window.** $\Sigma$ is a *sample* estimate over a finite window —
   noisy, especially short histories (the tab warns under 60 observations). The
   window is the **intersection** of all series (§1.1), so one short-history

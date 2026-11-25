@@ -64,25 +64,45 @@ def _from_stooq(ticker: str, period: str) -> pd.Series | None:
 
 
 def get_prices(ticker: str, period: str = "5y") -> pd.Series | None:
-    """Adjusted close series for `ticker`, cache-backed. None if unavailable."""
+    """Close series for `ticker`, cache-backed. None if unavailable.
+
+    The series carries its provenance in `.attrs["source"]`:
+      - "yfinance": auto_adjust=True → split- AND dividend-adjusted (total return).
+      - "stooq":    raw Close — split-adjusted but not reliably dividend-adjusted,
+                    so volatility can be overstated for distributing funds.
+      - "cache":    last good on-disk copy (provenance of whichever source wrote it).
+    """
     if not ticker:
         return None
     s = _from_yfinance(ticker, period)
+    src = "yfinance"
     if s is None:
         s = _from_stooq(ticker, period)
+        src = "stooq"
     if s is not None:
         _save(ticker, s)
+        s.attrs["source"] = src
         return s
-    return _load(ticker)  # offline fallback
+    c = _load(ticker)
+    if c is not None:
+        c.attrs["source"] = "cache"
+    return c
 
 
 def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
-    """Aligned close-price panel (inner-joined on common dates)."""
-    series = {}
+    """Aligned close-price panel (inner-joined on common dates).
+
+    `panel.attrs["sources"]` maps ticker -> provenance (see `get_prices`), so the
+    UI can flag non-total-return series.
+    """
+    series, sources = {}, {}
     for t in dict.fromkeys(t for t in tickers if t):
         s = get_prices(t, period)
         if s is not None:
             series[t] = s
+            sources[t] = s.attrs.get("source", "?")
     if not series:
         return pd.DataFrame()
-    return pd.concat(series.values(), axis=1, keys=series.keys())
+    panel = pd.concat(series.values(), axis=1, keys=series.keys())
+    panel.attrs["sources"] = sources
+    return panel
