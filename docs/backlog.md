@@ -27,7 +27,10 @@ of an external code review and are correctness issues, not just enhancements.
   Fixed: the Risk tab now counts the full positioned book, reports coverage by
   holding count (priced K/N), and lists any excluded (unpriced) holdings in a
   warning; caption and research-mode metric relabelled; README and
-  risk-methodology.md §8 reconciled with the implementation.
+  risk-methodology.md §8 reconciled with the implementation. Follow-up (`6a16372`):
+  the Allocation tab's `portfolio_volume` had the same silent-drop — unpriced
+  tracked holdings fell out of market value, understating a sleeve's share of the
+  combined book. `overlap.unpriced_positions` now surfaces them and the tab warns.
 
 - **Total-return consistency across providers.** ✅ **Done (flagging) — `67f2189`.**
   yfinance (`auto_adjust=True`) returns dividend-adjusted (total-return) prices;
