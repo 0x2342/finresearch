@@ -16,11 +16,13 @@ import numpy as np
 TRADING_DAYS = 252
 
 
-def decompose(panel, weights: dict[str, float]) -> dict | None:
+def decompose(panel, weights: dict[str, float], periods_per_year: int = TRADING_DAYS) -> dict | None:
     """Risk decomposition for a weight vector keyed by ticker.
 
     panel: price DataFrame (columns = tickers). weights: ticker -> weight (need
     not sum to 1; renormalized over priced tickers). None if nothing is priced.
+    `periods_per_year` sets the annualisation (252 daily, 52 weekly) — pass the
+    value that matches the panel's sampling frequency.
     """
     cols = getattr(panel, "columns", [])
     tickers = [t for t in weights if t and t in cols and weights[t] > 0]
@@ -33,8 +35,8 @@ def decompose(panel, weights: dict[str, float]) -> dict | None:
     raw = np.array([weights[t] for t in tickers], dtype=float)
     covered = float(raw.sum())
     w = raw / covered
-    cov = rets[tickers].cov().values                      # daily covariance
-    ann = float(np.sqrt(TRADING_DAYS))
+    cov = rets[tickers].cov().values                      # per-period covariance
+    ann = float(np.sqrt(periods_per_year))
     standalone = {t: float(np.sqrt(max(cov[i, i], 0.0)) * ann) for i, t in enumerate(tickers)}
     wavg_vol = float(sum(w[i] * standalone[t] for i, t in enumerate(tickers)))
 
@@ -80,13 +82,16 @@ def portfolio_returns(panel, weights: dict[str, float]):
     return rets[tickers] @ w
 
 
-def rolling_vol(panel, weights: dict[str, float], windows=(252, 756)):
-    """Annualised rolling volatility of the book for each window (trading days).
+def rolling_vol(panel, weights: dict[str, float], windows=(252, 756),
+                periods_per_year: int = TRADING_DAYS):
+    """Annualised rolling volatility of the book for each window.
 
-    Returns a DataFrame indexed by date with one column per window that has
-    enough history, labelled in months (252 → "12m", 756 → "36m"). None if no
-    window fits. A regime lens: how the full-window number (a flat reference) is
-    really a blend of calmer and more turbulent stretches.
+    `windows` and `periods_per_year` are both in the panel's sampling periods
+    (daily: windows (252, 756), ppy 252; weekly: windows (52, 156), ppy 52).
+    Returns a DataFrame indexed by date with one column per window that has enough
+    history, labelled in months. None if no window fits. A regime lens: how the
+    full-window number (a flat reference) is really a blend of calmer and more
+    turbulent stretches.
     """
     r = portfolio_returns(panel, weights)
     if r is None or r.empty:
@@ -96,8 +101,8 @@ def rolling_vol(panel, weights: dict[str, float], windows=(252, 756)):
     out = {}
     for win in windows:
         if len(r) >= win:
-            label = f"{round(win / TRADING_DAYS * 12)}m"
-            out[label] = r.rolling(win).std(ddof=1) * np.sqrt(TRADING_DAYS)
+            label = f"{round(win / periods_per_year * 12)}m"
+            out[label] = r.rolling(win).std(ddof=1) * np.sqrt(periods_per_year)
     if not out:
         return None
     return pd.DataFrame(out).dropna(how="all")

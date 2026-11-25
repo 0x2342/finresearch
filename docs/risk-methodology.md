@@ -249,6 +249,15 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   window is the **intersection** of all series (§1.1), so one short-history
   ticker truncates the estimate for everything; the caption shows obs count and
   date range.
+- **Trading calendars & sampling frequency.** Daily complete-case returns
+  (`pct_change().dropna(how="any")`) drop any day a series didn't trade, and —
+  because a US close (~21:00 UTC) and a Tokyo close (~06:00 UTC) on the same
+  calendar date sit ~15h apart — cross-market co-movement surfaces a day late,
+  biasing daily correlations **down** (the Epps effect). The app's **weekly
+  (Fri–Fri)** sampling (`prices.to_frequency`: forward-fill to the latest close,
+  then take the week-ending value) absorbs that one-day lag and the
+  holiday-intersection loss; annualisation then uses $\sqrt{52}$ instead of
+  $\sqrt{252}$. Daily is the default and remains available as a secondary view.
 - **Stationarity / i.i.d.** A single $\Sigma$ and $\sqrt{252}$ scaling assume
   returns are roughly stationary and serially uncorrelated. Real returns show
   volatility clustering and fat tails.
@@ -298,3 +307,4 @@ the long-run average implies. Each window renders only once enough history exist
 | € risk | §7 | Risk tab → `eur_vol` |
 | Portfolio returns | $r_{p,t}=\mathbf{w}^\top\mathbf{r}_t$ | `risk.portfolio_returns` |
 | Rolling volatility (12m/36m) | §9 | `risk.rolling_vol` → Risk tab |
+| Weekly (Fri–Fri) sampling | §8 | `prices.to_frequency` → Correlation & Risk tabs |

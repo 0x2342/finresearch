@@ -24,6 +24,8 @@ MODE_LABEL = {
 }
 EMPTY = pd.DataFrame(columns=["ISIN", "Name", "Ticker", "Weight", "Units"])
 MIN_HISTORY_YEARS = 3  # covariance needs ~3y; shorter series get flagged
+FREQ_PERIODS = {"daily": 252, "weekly": 52}      # periods/year for annualisation
+FREQ_WINDOWS = {"daily": (252, 756), "weekly": (52, 156)}  # rolling-vol 12m/36m
 TIER_LABEL = {
     "auto": "Auto — name-level, else factsheet",
     "name": "Name-level only",
@@ -113,6 +115,13 @@ with st.sidebar:
             st.rerun()
 
     period = st.selectbox("Price history", ["1y", "2y", "5y", "10y"], index=2)
+    freq_label = st.selectbox(
+        "Return frequency", ["Daily", "Weekly (Fri–Fri)"], index=0, key="freq_sel",
+        help="Weekly returns damp the Epps effect from non-synchronous US / Asia / "
+             "EU closes and holiday gaps — prefer them for globally diversified "
+             "books. Affects the Correlation and Risk tabs only.",
+    )
+    freq = "weekly" if freq_label.startswith("Weekly") else "daily"
 
     # Editor seeded once per slug; its own widget key carries edits across reruns.
     seed_key = f"seed::{active}"
@@ -288,7 +297,11 @@ with tab_px:
 # Correlation (mode-independent: pairwise on returns)
 # --------------------------------------------------------------------------- #
 with tab_corr:
-    st.caption("Pearson correlation of daily returns, inner-joined on common dates.")
+    st.caption(
+        f"Pearson correlation of {freq} returns, inner-joined on common dates."
+        + (" Weekly (Fri–Fri) sampling reduces the non-synchronous-close bias."
+           if freq == "weekly" else "")
+    )
     if panel.shape[1] < 2:
         st.info("Need at least two priced instruments. Fix tickers in the sidebar.")
     else:
@@ -298,7 +311,7 @@ with tab_corr:
         if missing:
             st.warning("Excluded (no price data): "
                        + ", ".join(f"{n} ({t})" for n, t in missing))
-        rets = panel.pct_change().dropna(how="any")
+        rets = prices.to_frequency(panel, freq).pct_change().dropna(how="any")
         if len(rets):
             st.caption(
                 f"{len(rets)} overlapping observations · {rets.index[0].date()} → "
@@ -573,9 +586,9 @@ with tab_alloc:
 # --------------------------------------------------------------------------- #
 with tab_risk:
     st.caption(
-        "Annualized volatility (daily returns × √252) and risk contribution by "
-        "sleeve and holding. One portfolio for a single-book view, or several "
-        "(same weight source) to split risk core vs satellite."
+        f"Annualized volatility ({freq} returns × √{FREQ_PERIODS[freq]}) and risk "
+        "contribution by sleeve and holding. One portfolio for a single-book view, "
+        "or several (same weight source) to split risk core vs satellite."
     )
     rsel = st.multiselect(
         "Portfolios", slugs, default=[active],
@@ -597,6 +610,7 @@ with tab_risk:
         })
         rpanel = cached_panel(rtks, period) if rtks else pd.DataFrame()
         rlast = rpanel.ffill().iloc[-1].to_dict() if not rpanel.empty else {}
+        rpanel = prices.to_frequency(rpanel, freq)  # returns use chosen freq; rlast stays daily
         vol = {s: overlap.portfolio_volume(rrows[s], rm, rlast) for s in rsel}
         tvol = sum(vol.values())
 
@@ -640,7 +654,7 @@ with tab_risk:
             n_tot = len(positioned)
             n_priced = n_tot - len(excluded)
 
-            dec = risk.decompose(rpanel, tick_w)
+            dec = risk.decompose(rpanel, tick_w, periods_per_year=FREQ_PERIODS[freq])
             if dec is None:
                 st.warning("Not enough overlapping price history to compute risk.")
             else:
@@ -659,7 +673,7 @@ with tab_risk:
                     help="portfolio volatility ÷ weighted-average standalone volatility (<1 = benefit)",
                 )
                 st.caption(
-                    f"{dec['obs']} daily obs · {dec['start'].date()} → {dec['end'].date()} "
+                    f"{dec['obs']} {freq} obs · {dec['start'].date()} → {dec['end'].date()} "
                     f"· priced {n_priced}/{n_tot} holdings. Window is set by the "
                     "shortest-history ticker; correlations rise toward 1 in a crash, so "
                     "realised drawdown risk can exceed this."
@@ -711,7 +725,10 @@ with tab_risk:
                     "**Rolling annualized volatility** — how the single number above "
                     "moves across regimes (constant current weights)."
                 )
-                rvol = risk.rolling_vol(rpanel, tick_w)
+                rvol = risk.rolling_vol(
+                    rpanel, tick_w,
+                    windows=FREQ_WINDOWS[freq], periods_per_year=FREQ_PERIODS[freq],
+                )
                 if rvol is None or rvol.empty:
                     st.caption(
                         "Need ≥ 1 year of overlapping history for a rolling 12-month "

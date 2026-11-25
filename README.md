@@ -60,9 +60,14 @@ blocked, since volume isn't comparable across modes.
 
 ## Risk (volatility & contribution)
 
-The **Risk** tab computes annualized volatility from daily return covariance
-(`√(wᵀΣw) × √252`) and decomposes it. Select one portfolio for a single-book view
-or several (same weight source) to split risk **core vs satellite**. It shows:
+The **Risk** tab computes annualized volatility from return covariance
+(`√(wᵀΣw)`, annualized) and decomposes it. A sidebar **Return frequency** toggle
+switches daily ↔ **weekly (Fri–Fri)** sampling: weekly absorbs the non-synchronous
+US/Asia/EU close lag (Epps effect) and holiday gaps, with annualization by `√52`
+instead of `√252` — prefer it for globally diversified books, keep daily as the
+secondary view. It also drives the Correlation tab. Select one portfolio for a
+single-book view or several (same weight source) to split risk **core vs
+satellite**. It shows:
 
 - **Annualized volatility** (%), and for tracked books the **± annual € volatility**
   (volatility × priced capital).
