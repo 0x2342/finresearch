@@ -46,12 +46,56 @@ of an external code review and are correctness issues, not just enhancements.
 
 ### P2 — robustness
 
-- **Trading-calendar alignment & weekly returns.** `pct_change().dropna(how="any")`
+Second review (re-checked code vs docs) reaffirmed the calendar item as the top
+remaining weakness, and added three refinements + a stretch goal. Ordered.
+
+- **[1] Trading-calendar alignment & weekly returns.** `pct_change().dropna(how="any")`
   keeps only the intersection of trading days (loses data) and compares
-  non-synchronous closes across US/JP/EU/EM (downward-biased correlations, Epps
-  effect). Add: explicit non-trading-day handling, a common valuation convention,
-  and **weekly (e.g. Fri–Fri) returns as a robustness check** to damp holiday /
-  closing-time mismatch.
+  non-synchronous closes across US/JP/EU/EM. Mechanism (corrected): complete-case
+  `dropna` *drops* misaligned days rather than keeping mismatched-horizon returns,
+  so the damage is (a) sample loss from every market's holidays and (b) the Epps
+  effect — a US close (~21:00 UTC) and a Tokyo close (~06:00 UTC) on the same
+  calendar day sit ~15h apart, so cross-market co-movement shows up a day late and
+  daily correlations are biased **down**. Fix: add a **weekly (Fri–Fri) return
+  sampling** option (resample to last valid obs per week, then returns) as the
+  primary robustness view for globally diversified books; keep daily as secondary.
+  Apply to both Correlation and Risk tabs.
+
+- **[2] Market-value coverage (not just holding count).** Research mode already
+  reports it — the "Priced weight" metric *is* `dec['covered']` = priced weight ÷
+  total weight (e.g. 85%); relabel it **"Value covered"** and show count + value
+  together. Tracked mode **cannot** compute it: an unpriced holding has units but
+  no price, so its market value — and the denominator — is unknown. State that
+  explicitly (value coverage undefined in tracked; €-vol is already scaled to
+  priced MV) rather than implying a number exists.
+
+- **[3] Explicit, auditable currency per instrument.** `fx.native_currency` falls
+  back to USD for any suffix-less ticker — convenient but silently confident. Add a
+  `currency` field to `registry` instruments (authoritative), keep provider
+  metadata as validation, and **flag** the pure bare-symbol→USD assumption in the
+  Ccy column (e.g. `USD?`) instead of asserting it.
+
+- **[4] Constant-weight vs actual-weight history.** `rolling_vol` applies today's
+  weights to all history (a "how would my current allocation have behaved" what-if),
+  which is documented and deliberate — but it is **not** the realised volatility of
+  the book as actually held. Strengthen the caption/doc to say so plainly; a true
+  actual-weights series needs transaction/valuation history we don't yet store
+  (future, gated on that data).
+
+- **[stretch] Historical stress tests.** Replay 2008 (systemic credit/liquidity),
+  2020 (sudden shock), 2022 (rate/inflation repricing) windows against current
+  weights — three genuinely different stress sources. Natural extension once weekly
+  sampling lands.
+
+- **Estimator stability / regime awareness.** ✅ **Done — `87a61f0`.** A single
+  full-window covariance blends regimes (COVID, 2022 rate shock, AI
+  concentration). Shipped: the Risk tab plots **rolling 12-month (252d) and
+  36-month (756d) annualised volatility** of the book at constant current weights,
+  over a dotted full-window σ reference. `risk.portfolio_returns` +
+  `risk.rolling_vol`; the rolling basis reconciles exactly with the headline σ
+  (full-window std = `decompose['ann_vol']`). Each window renders only once its
+  history exists; risk-methodology.md §9 documents it. The full-window estimator
+  is unchanged — this is an added lens, not a replacement.
 
 - **Estimator stability / regime awareness.** ✅ **Done — `87a61f0`.** A single
   full-window covariance blends regimes (COVID, 2022 rate shock, AI

@@ -56,7 +56,7 @@ which is positive when the two tend to move together and negative when they move
 oppositely. Note the diagonal is just the variance, $\Sigma_{ii} = \sigma_i^2$.
 The **correlation** rescales covariance to $[-1,1]$:
 
-$$ \rho_{ij} = \frac{\Sigma_{ij}}{\sigma_i\,\sigma_j}. $$
+$$ \rho_{ij} = \frac{\Sigma_{ij}}{\sigma_i\sigma_j}. $$
 
 Collecting every pair gives the **covariance matrix** $\Sigma \in
 \mathbb{R}^{n\times n}$, which is symmetric ($\Sigma=\Sigma^\top$) and positive
@@ -73,9 +73,9 @@ capital, $\sum_i w_i = 1$). The portfolio return is the weighted sum
 $r_p = \mathbf{w}^\top\mathbf{r} = \sum_i w_i r^{(i)}$, so its variance is
 
 $$ \sigma_p^2 = \mathrm{Var}\!\left(\mathbf{w}^\top\mathbf{r}\right)
-= \mathbf{w}^\top \Sigma\, \mathbf{w}
+= \mathbf{w}^\top \Sigma \mathbf{w}
 = \sum_{i=1}^{n}\sum_{j=1}^{n} w_i w_j \Sigma_{ij},
-\qquad \sigma_p = \sqrt{\mathbf{w}^\top\Sigma\,\mathbf{w}}. $$
+\qquad \sigma_p = \sqrt{\mathbf{w}^\top\Sigma\mathbf{w}}. $$
 
 The cross terms ($i\ne j$) are the heart of diversification: whenever
 $\rho_{ij}<1$ they add less than if the assets moved in lockstep, so $\sigma_p$
@@ -92,15 +92,19 @@ Under the standard **i.i.d.** assumption (returns independent and identically
 distributed across days), variance adds across independent days, so over
 $A = 252$ trading days variance scales by $A$ and volatility by $\sqrt{A}$:
 
-$$ \Sigma_{\text{ann}} = A\,\Sigma_{\text{daily}},
+$$ \Sigma_{\text{ann}} = A\Sigma_{\text{daily}},
 \qquad \sigma_{\text{ann}} = \sqrt{A}\,\sigma_{\text{daily}}. $$
 
 This is why we can keep everything in daily units and only scale at the end.
 
 > **Code.** `ann = sqrt(252)`; `ann_vol = sigma * ann`; each standalone volatility
-> is `sqrt(cov[i,i]) * ann`. If returns are autocorrelated (volatility clustering),
-> $\sqrt{252}$ over- or under-states the true annual figure — daily sampling with
-> $\sqrt{252}$ is the convention, not an exact identity.
+> is `sqrt(cov[i,i]) * ann`. If returns are **autocorrelated** (serial dependence
+> in the returns themselves), $\sqrt{252}$ over- or under-states the true annual
+> figure — positive autocorrelation inflates multi-period variance, negative
+> deflates it. This is distinct from *volatility clustering* (time-varying
+> conditional variance), which a single $\Sigma$ also misses but which does not by
+> itself bias the $\sqrt{252}$ scaling; see §8. Daily sampling with $\sqrt{252}$ is
+> a convention, not an exact identity.
 
 ---
 
@@ -125,7 +129,7 @@ $$ \text{MRC}_i = \frac{\partial \sigma_p}{\partial w_i}
 The **component risk contribution** is weight × marginal, and these sum back to
 total volatility:
 
-$$ \text{RC}_i = w_i\,\text{MRC}_i = \frac{w_i\,(\Sigma\mathbf{w})_i}{\sigma_p},
+$$ \text{RC}_i = w_i\text{MRC}_i = \frac{w_i(\Sigma\mathbf{w})_i}{\sigma_p},
 \qquad \sum_{i=1}^{n}\text{RC}_i = \sigma_p. $$
 
 So the **percentage risk contribution** $\text{RC}_i/\sigma_p$ sums to 1. Note
@@ -145,7 +149,7 @@ position that hedges the book can even have **negative** risk contribution.
 To quantify the benefit from §2, compare the portfolio volatility to the
 capital-weighted average of the holdings' standalone volatilities $\sigma_i=\sqrt{\Sigma_{ii}}$:
 
-$$ \text{DR} = \frac{\sigma_p}{\sum_{i} w_i\,\sigma_i}. $$
+$$ \text{DR} = \frac{\sigma_p}{\sum_{i} w_i\sigma_i}. $$
 
 $\text{DR}\le 1$ always, with equality **iff** every pairwise correlation is 1
 (nothing to diversify). The smaller it is, the more the correlations are working
@@ -236,7 +240,10 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   cross; converting would double-count). This normalises the *quote* currency —
   hedged-vs-unhedged *exposure* is a separate look-through concern. A series whose
   currency can't be resolved, or whose cross is unavailable, is left native and
-  flagged rather than silently rescaled.
+  flagged rather than silently rescaled. *Approximation:* the FX cross is
+  forward-filled onto the price dates, so a converted point pairs an ETF close with
+  the most recent available FX quote, not necessarily the same instant — tolerable
+  at daily frequency, and a further reason the §9 calendar caveat matters.
 - **Estimation window.** $\Sigma$ is a *sample* estimate over a finite window —
   noisy, especially short histories (the tab warns under 60 observations). The
   window is the **intersection** of all series (§1.1), so one short-history
