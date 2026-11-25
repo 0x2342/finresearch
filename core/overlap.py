@@ -93,6 +93,23 @@ def effective_weights(rows, mode: str, last_prices: dict[str, float]) -> dict[st
     return normalise({k: v for k, v in manual.items() if v > 0})
 
 
+def unpriced_positions(rows, mode: str, last_prices: dict[str, float]) -> list[str]:
+    """Names of holdings that carry a position but can't be valued.
+
+    In "tracked" mode these are silently dropped from `portfolio_volume` (Units
+    with no last price), so a portfolio's market value — and hence its share of a
+    combined book — is understated. Returns their display names so the UI can say
+    so. Empty in "research" mode, where sizing is weight-based and needs no price.
+    """
+    if mode != "tracked":
+        return []
+    out: list[str] = []
+    for r in rows:
+        if _to_float(r.get("Units")) > 0 and not last_prices.get(r.get("Ticker")):
+            out.append(r.get("Name") or r.get("ISIN"))
+    return out
+
+
 def portfolio_volume(rows, mode: str, last_prices: dict[str, float]) -> float:
     """Total 'volume' of a portfolio under the shared weight source.
 

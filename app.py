@@ -473,6 +473,20 @@ with tab_alloc:
                 lastd = (pan.ffill().iloc[-1].to_dict() if not pan.empty else {})
 
             vols = {s: overlap.portfolio_volume(rows_by[s], m, lastd) for s in sel}
+            flagged = {
+                s: names for s in sel
+                if (names := overlap.unpriced_positions(rows_by[s], m, lastd))
+            }
+            if flagged:
+                lines = "; ".join(
+                    f"**{name_by_slug.get(s, s)}**: {', '.join(names)}"
+                    for s, names in flagged.items()
+                )
+                st.warning(
+                    "Unpriced holdings are excluded from market value (tracked mode), "
+                    "so these portfolios' share of the combined book is understated — "
+                    f"{lines}. Fix the tickers in the sidebar to size the satellite correctly."
+                )
             total = sum(vols.values())
             if total <= 0:
                 st.warning(
