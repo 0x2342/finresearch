@@ -195,9 +195,10 @@ to widen coverage. A future upgrade is to back this with the iShares
 product-screener catalog, which would resolve any iShares ISIN directly and
 auto-populate `INDEX_REF`.
 
-## Next (deferred per blueprint)
+## Next (deferred)
 
-- Back the resolver with the iShares product-screener catalog (direct ISIN→index
-  for iShares funds; auto-populated `INDEX_REF`).
-- Cross-portfolio comparison (tracked book vs research candidate).
-- Constituent-level price correlation; optimisation; auto-refresh.
+See **[docs/backlog.md](docs/backlog.md)**. Highlights: risk-engine correctness
+from a code review (enforce EUR total returns, honest tracked-mode coverage,
+total-return consistency across data providers), robustness (calendar alignment /
+weekly returns, rolling 12m & 36m vol), the iShares product-screener catalog for
+the resolver, and constituent-level correlation / optimisation / auto-refresh.
