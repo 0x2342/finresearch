@@ -163,6 +163,28 @@ def mode_of(idx: dict, slug: str) -> str:
     return "research"
 
 
+def set_notional(slug: str, notional: float) -> None:
+    """Persist a research portfolio's relative size (notional capital)."""
+    idx = _read_index()
+    if not idx:
+        return
+    for p in idx["portfolios"]:
+        if p["slug"] == slug:
+            p["notional"] = float(notional)
+    _write_index(idx)
+
+
+def notional_of(idx: dict, slug: str, default: float = 1.0) -> float:
+    """Relative notional for a research portfolio (default 1.0 = equal size)."""
+    for p in idx["portfolios"]:
+        if p["slug"] == slug:
+            try:
+                return float(p.get("notional", default))
+            except (TypeError, ValueError):
+                return default
+    return default
+
+
 # --- Look-through source URLs (ISIN -> iShares holdings CSV) ---------------- #
 _SOURCES = os.path.join(os.path.dirname(__file__), "..", "data", "sources.csv")
 

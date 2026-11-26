@@ -225,6 +225,7 @@ tab_px, tab_corr, tab_overlap, tab_value, tab_alloc, tab_risk = st.tabs(
 with tab_px:
     priced = list(panel.columns) if not panel.empty else []
     srcs = panel.attrs.get("sources", {}) if not panel.empty else {}
+    cached = panel.attrs.get("cached", set()) if not panel.empty else set()
     curr = panel.attrs.get("currencies", {}) if not panel.empty else {}
     conv = panel.attrs.get("converted", {}) if not panel.empty else {}
     assumed = panel.attrs.get("ccy_assumed", set()) if not panel.empty else set()
@@ -246,7 +247,8 @@ with tab_px:
             yrs = round((s.index[-1] - s.index[0]).days / 365.25, 1)
             cov.append({
                 "Name": name_of[i], "Ticker": t, "Priced": "✓",
-                "Ccy": _ccy_label(t), "Source": srcs.get(t, "?"),
+                "Ccy": _ccy_label(t),
+                "Source": srcs.get(t, "?") + (" ·cached" if t in cached else ""),
                 "From": str(s.index[0].date()), "Points": int(len(s)),
                 "Years": yrs, "Flag": "⚠ short" if yrs < MIN_HISTORY_YEARS else "",
             })
@@ -260,7 +262,7 @@ with tab_px:
         f"⚠ marks under {MIN_HISTORY_YEARS:g}y history — too short for stable covariance; "
         "use a longer proxy on the same index where one exists (bond sleeves often can't)."
     )
-    if "stooq" in srcs.values():
+    if any(v == "stooq" for v in srcs.values()):
         stq = sorted(t for t, v in srcs.items() if v == "stooq")
         st.warning(
             "Source = **stooq** for: " + ", ".join(stq) + ". Stooq's raw close is not "
@@ -534,7 +536,26 @@ with tab_alloc:
                 pan = cached_panel(tks, period) if tks else pd.DataFrame()
                 lastd = (pan.ffill().iloc[-1].to_dict() if not pan.empty else {})
 
-            vols = {s: overlap.portfolio_volume(rows_by[s], m, lastd) for s in sel}
+            if m == "research":
+                # Research weights only set allocation *within* a book and sum to 1,
+                # so they can't size books against each other. Use an explicit
+                # per-portfolio notional (relative capital) instead.
+                st.caption(
+                    "Research books size by an explicit **notional** (relative capital) — "
+                    "their weights only allocate within a book. Set each size:"
+                )
+                vols = {}
+                ncols = st.columns(len(sel))
+                for col, s in zip(ncols, sel):
+                    v = col.number_input(
+                        name_by_slug.get(s, s), min_value=0.0, step=0.5,
+                        value=store.notional_of(idx, s, 1.0), key=f"notional::{s}",
+                    )
+                    vols[s] = v
+                    if v != store.notional_of(idx, s, 1.0):
+                        store.set_notional(s, v)
+            else:
+                vols = {s: overlap.portfolio_volume(rows_by[s], m, lastd) for s in sel}
             flagged = {
                 s: names for s in sel
                 if (names := overlap.unpriced_positions(rows_by[s], m, lastd))
@@ -554,10 +575,10 @@ with tab_alloc:
                 st.warning(
                     "Total volume is zero — "
                     + ("enter Units and make sure tickers price (tracked mode)."
-                       if m == "tracked" else "enter Weights (research mode).")
+                       if m == "tracked" else "set a non-zero notional for at least one book.")
                 )
             else:
-                unit = "€" if m == "tracked" else "weight"
+                unit = "€" if m == "tracked" else "notional"
                 sat = sum(v for s, v in vols.items() if s != core_sel) / total
                 m1, m2 = st.columns(2)
                 m1.metric(

@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import os
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -24,9 +25,31 @@ def _cache_file(ticker: str) -> str:
     return os.path.join(_CACHE_DIR, f"{safe}.parquet")
 
 
+def _meta_file(ticker: str) -> str:
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    return os.path.join(_CACHE_DIR, f"{ticker.replace('/', '_')}.meta.json")
+
+
+_ADJUSTMENT = {"yfinance": "total-return", "stooq": "raw-close"}
+
+
 def _save(ticker: str, s: pd.Series) -> None:
     try:
         s.to_frame("close").to_parquet(_cache_file(ticker))
+    except Exception:
+        return
+    # Persist provenance alongside the prices so a later cache reload keeps the
+    # original provider + adjustment (otherwise the Stooq-unadjusted warning
+    # silently disappears once a series is served from cache).
+    try:
+        src = s.attrs.get("source", "?")
+        meta = {
+            "source": src,
+            "adjustment": _ADJUSTMENT.get(src, "unknown"),
+            "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        with open(_meta_file(ticker), "w") as fh:
+            json.dump(meta, fh)
     except Exception:
         pass
 
@@ -34,9 +57,18 @@ def _save(ticker: str, s: pd.Series) -> None:
 def _load(ticker: str) -> pd.Series | None:
     try:
         df = pd.read_parquet(_cache_file(ticker))
-        return df["close"].rename(ticker)
+        s = df["close"].rename(ticker)
     except Exception:
         return None
+    try:
+        with open(_meta_file(ticker)) as fh:
+            meta = json.load(fh)
+        s.attrs["orig_source"] = meta.get("source")
+        s.attrs["adjustment"] = meta.get("adjustment")
+        s.attrs["retrieved_at"] = meta.get("retrieved_at")
+    except Exception:
+        pass
+    return s
 
 
 def _from_yfinance(ticker: str, period: str) -> pd.Series | None:
@@ -74,7 +106,10 @@ def get_prices(ticker: str, period: str = "5y") -> pd.Series | None:
       - "yfinance": auto_adjust=True → split- AND dividend-adjusted (total return).
       - "stooq":    raw Close — split-adjusted but not reliably dividend-adjusted,
                     so volatility can be overstated for distributing funds.
-      - "cache":    last good on-disk copy (provenance of whichever source wrote it).
+    When served from the on-disk cache (both live sources unreachable) the series
+    keeps its *original* provider in `.attrs["source"]` (restored from the cache
+    metadata) and sets `.attrs["from_cache"] = True` + `.attrs["retrieved_at"]`,
+    so adjustment warnings survive a cache reload.
     """
     if not ticker:
         return None
@@ -84,12 +119,14 @@ def get_prices(ticker: str, period: str = "5y") -> pd.Series | None:
         s = _from_stooq(ticker, period)
         src = "stooq"
     if s is not None:
-        _save(ticker, s)
         s.attrs["source"] = src
+        _save(ticker, s)
         return s
     c = _load(ticker)
     if c is not None:
-        c.attrs["source"] = "cache"
+        # keep the original provider so the Stooq/adjustment warning still fires
+        c.attrs["source"] = c.attrs.get("orig_source") or "cache"
+        c.attrs["from_cache"] = True
     return c
 
 
@@ -162,12 +199,14 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
       - ``ccy_assumed``: set of tickers whose currency was *assumed* USD from a
                         bare symbol (no registry pin / metadata / suffix).
     """
-    series, sources = {}, {}
+    series, sources, cached = {}, {}, set()
     for t in dict.fromkeys(t for t in tickers if t):
         s = get_prices(t, period)
         if s is not None:
             series[t] = s
             sources[t] = s.attrs.get("source", "?")
+            if s.attrs.get("from_cache"):
+                cached.add(t)
     if not series:
         return pd.DataFrame()
 
@@ -198,6 +237,7 @@ def get_panel(tickers: list[str], period: str = "5y") -> pd.DataFrame:
 
     panel = pd.concat(series.values(), axis=1, keys=series.keys())
     panel.attrs["sources"] = sources
+    panel.attrs["cached"] = cached
     panel.attrs["currencies"] = currencies
     panel.attrs["converted"] = converted
     panel.attrs["ccy_assumed"] = assumed

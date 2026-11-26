@@ -57,11 +57,13 @@ portfolio; a legacy single `data/portfolio.csv` is migrated into it automaticall
 
 The **Allocation** tab combines two or more portfolios and measures each one's
 share of the combined book, so a satellite sleeve stays sensibly sized. Each
-portfolio's *volume* is `Σ Units × price` (tracked) or `Σ raw Weight` (research);
-contribution = volume ÷ combined total. Pick the core; the rest count as
-satellite, compared against a user "sensible max" (default 25%). All selected
-portfolios **must share the same weight source** — mixing tracked and research is
-blocked, since volume isn't comparable across modes.
+portfolio's *volume* is `Σ Units × price` in **tracked** mode. In **research**
+mode weights sum to 1 and only allocate *within* a book, so they can't size books
+against each other — instead you set an explicit per-book **notional** (relative
+capital, persisted), and contribution = notional ÷ total. Pick the core; the rest
+count as satellite, compared against a user "sensible max" (default 25%). All
+selected portfolios **must share the same weight source** — mixing tracked and
+research is blocked, since volume isn't comparable across modes.
 
 ## Risk (volatility & contribution)
 
