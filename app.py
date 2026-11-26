@@ -698,8 +698,49 @@ with tab_risk:
                         + ", ".join(sorted(set(excluded)))
                         + f". Volatility and € figures cover the {n_priced} priced holding(s) only."
                     )
+                # Why is the window short? Identify any late-listing holding that
+                # caps the common window, and separate that from frequency × a short
+                # price-history period (few observations by construction).
+                tol = 7 if freq == "daily" else 31
+                binding, latest_d, earliest_d = risk.binding_holdings(
+                    rpanel, dec["tickers"], tol_days=tol
+                )
+                gap = 30 if freq == "daily" else 60
+                truncated = (
+                    latest_d is not None and earliest_d is not None
+                    and (latest_d - earliest_d).days > gap
+                    and len(binding) < len(dec["tickers"])
+                )
+                bnames = ", ".join(tick_name.get(t, t) for t in binding)
+
                 if dec["obs"] < 60:
-                    st.warning(f"Only {dec['obs']} observations — volatility estimate is noisy.")
+                    se = 1.0 / (2 * dec["obs"]) ** 0.5  # ≈ relative SE of a vol estimate
+                    msg = (
+                        f"Only {dec['obs']} {freq} observations "
+                        f"(≈ ±{se:.0%} standard error on the volatility estimate). "
+                    )
+                    if truncated:
+                        msg += (
+                            f"The window is capped by **{bnames}** (history starts "
+                            f"{latest_d.date()}), while the other holdings reach back to "
+                            f"{earliest_d.date()}. Swap in a longer-history proxy of the "
+                            "same index, or drop it from the risk view."
+                        )
+                    else:
+                        msg += (
+                            f"That is expected for {freq} sampling over this history "
+                            f"({dec['start'].date()} → {dec['end'].date()}) — widen "
+                            "**Price history** in the sidebar, or switch to daily "
+                            "returns, for a tighter estimate."
+                        )
+                    st.warning(msg)
+                elif truncated:
+                    st.caption(
+                        f"⚠ Window capped by **{bnames}** (from {latest_d.date()}); the "
+                        f"other holdings reach back to {earliest_d.date()}. The estimate "
+                        "uses only the overlapping period — swap a longer-history proxy "
+                        "to extend it."
+                    )
 
                 if len(rsel) >= 2:
                     srisk = {}

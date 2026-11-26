@@ -256,10 +256,16 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   the most recent available FX quote, not necessarily the same instant — tolerable
   at daily frequency, and a further reason the §9 calendar caveat matters.
 - **Estimation window.** $\Sigma$ is a *sample* estimate over a finite window —
-  noisy, especially short histories (the tab warns under 60 observations). The
-  window is the **intersection** of all series (§1.1), so one short-history
-  ticker truncates the estimate for everything; the caption shows obs count and
-  date range.
+  noisy, especially short histories. A volatility estimate from $N$ observations
+  has relative standard error $\approx 1/\sqrt{2N}$ (≈ ±10% at $N=50$), which the
+  tab reports when it warns (under 60 observations). The window is the
+  **intersection** of all series (§1.1), so one short-history ticker truncates the
+  estimate for everything; the warning separates the two causes — a **late-listing
+  holding** that caps the window (named, with its start date, via
+  `risk.binding_holdings`) versus **frequency × a short price-history period**
+  (weekly over ~1y is ~52 obs by construction; widen the history or use daily). A
+  holding that truncates the window well below the others is flagged even when the
+  observation count itself is adequate, so a short overlap is never silent.
 - **Trading calendars & sampling frequency.** Daily complete-case returns
   (`pct_change().dropna(how="any")`) drop any day a series didn't trade, and —
   because a US close (~21:00 UTC) and a Tokyo close (~06:00 UTC) on the same

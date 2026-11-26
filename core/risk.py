@@ -60,6 +60,31 @@ def decompose(panel, weights: dict[str, float], periods_per_year: int = TRADING_
     }
 
 
+def binding_holdings(panel, tickers, tol_days: int = 7):
+    """Which holdings' histories cap the common (intersection) window.
+
+    The risk window starts at the latest first-observation across `tickers` (the
+    intersection), so the holding(s) that start latest are what truncate it.
+    Returns ``(binding, latest, earliest)``: `binding` = tickers whose first valid
+    observation falls within `tol_days` of the latest first-observation (the
+    binding constraint), and `latest`/`earliest` are those edge dates (pandas
+    Timestamps), or ``([], None, None)`` if nothing is priced.
+    """
+    cols = getattr(panel, "columns", [])
+    firsts = {}
+    for t in tickers:
+        if t in cols:
+            d = panel[t].first_valid_index()
+            if d is not None:
+                firsts[t] = d
+    if not firsts:
+        return [], None, None
+    latest = max(firsts.values())
+    earliest = min(firsts.values())
+    binding = sorted(t for t, d in firsts.items() if (latest - d).days <= tol_days)
+    return binding, latest, earliest
+
+
 def portfolio_returns(panel, weights: dict[str, float]):
     """Daily return series of the book at fixed current weights (constant-mix).
 
