@@ -113,10 +113,13 @@ def unpriced_positions(rows, mode: str, last_prices: dict[str, float]) -> list[s
 def portfolio_volume(rows, mode: str, last_prices: dict[str, float]) -> float:
     """Total 'volume' of a portfolio under the shared weight source.
 
-    - "tracked":  Σ Units × last price (market value).
-    - "research": Σ raw Weight entries (un-normalised weight mass).
-    Used to measure each portfolio's share of a combined book (e.g. satellite
-    sizing). Both portfolios must use the same mode for the ratio to be valid.
+    - "tracked":  Σ Units × last price (market value) — used for satellite sizing.
+    - "research": Σ raw Weight entries (un-normalised weight mass). NOTE: since
+      research weights are normalised to sum to 1, this is ~constant across books
+      and is NOT used to size research portfolios against each other. Research
+      satellite sizing uses an explicit per-book **notional** instead
+      (`store.notional_of` / `set_notional`, set in the Allocation tab); this
+      branch only survives as the raw mass for the tracked-mode € volatility path.
     """
     if mode == "tracked":
         total = 0.0
