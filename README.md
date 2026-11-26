@@ -141,21 +141,29 @@ flagged. An unresolved currency or a missing cross leaves the series native and
 before the GBP cross.
 
 Registry ships long-history EUR proxies: S&P 500 `SXR8.DE`, STOXX 600 `EXSA.DE`,
-MSCI Japan `IQQJ.DE`, MSCI EM `IS3N.DE`.
+MSCI Japan `IQQJ.DE`, MSCI EM `IS3N.DE`. Note `IS3N.DE` tracks MSCI EM **IMI**
+(large+mid+**small** cap), a superset of the held swap's standard MSCI EM — fine
+as a risk proxy (~0.99 correlated), but its look-through includes small-caps that
+aren't in the target index. The registry labels this via `ref_index`, shown in the
+look-through provenance as `… ref: MSCI Emerging Markets IMI (approx.)`.
 
 ### Bond sleeve proxies
 
-Decision: keep the bond proxies **exact** (same index, hedge preserved) and
-accept short history — the coverage panel flags anything under 3y with ⚠.
-Never substitute an unhedged tracker for a hedged one: the FX leg would dominate
-and wreck the correlation.
+Decision: keep the bond proxies as close to exact as possible (matched index
+variant where one exists, hedge always preserved) and accept short history — the
+coverage panel flags anything under 3y with ⚠. Never substitute an unhedged
+tracker for a hedged one: the FX leg would dominate and wreck the correlation.
+Where no exact reference exists, `ref_index` records the mismatch and the
+look-through is labelled a proxy (see Global Aggregate below).
 
 - **Global Aggregate, EUR-hedged** (`IE00BG47KH54`, currently `VAGF.DE` ~2022):
-  the product class is young, so no long exact series exists. Longest *exact*
-  option is iShares Core Global Aggregate Bond UCITS ETF EUR Hedged (Acc,
-  `IE00BDBRDM35`, ~2017) — try its listing (e.g. `AGGH`) in the coverage panel.
-  Rejected (recorded for the record): a duration-matched EUR-aggregate proxy
-  (e.g. iShares € Aggregate Bond, ~2009) — longer, but it's a different index.
+  the product class is young, so no long exact series exists. The held Vanguard
+  fund tracks Bloomberg Global Aggregate **Float Adjusted & Scaled**; the current
+  iShares reference (291770 / `AGGH`-class) tracks the **standard** Bloomberg
+  Global Aggregate — close, not identical, so `ref_index` flags it as a proxy.
+  Longest near-exact option is iShares Core Global Aggregate Bond UCITS ETF EUR
+  Hedged (Acc, `IE00BDBRDM35`, ~2017). Rejected (recorded): a duration-matched
+  EUR-aggregate proxy (e.g. iShares € Aggregate Bond, ~2009) — longer, different index.
 - **EUR Corp** (`IE00B3F81R35`, currently `IEAC.AS`): the fund itself is
   long-history (2009); only the Amsterdam listing is thin. Use a better-covered
   listing of the *same* fund — Xetra `EUN5.DE` or LSE `IEAC.L`.
@@ -194,7 +202,8 @@ the six core funds resolve to name-level with no manual input. The per-fund
 paste a URL there to change the source for one fund.
 
 Notes: for a **swap** holding the product id points at a *physical* reference
-fund on the same index (a swap fund's own file is a substitute basket). Use the
+fund on the same (or closest-available) index (a swap fund's own file is a
+substitute basket; `ref_index` flags any index-variant mismatch). Use the
 `en_GB` / `uk-ishares` site for English labels; German-domiciled funds (STOXX 600
 DE) need `de-ishares` with `en_DE`. `registry.source_for(isin, override)`
 resolves the source: editor override → registry `holdings_url` → built API URL.

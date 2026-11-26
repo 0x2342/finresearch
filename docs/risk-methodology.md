@@ -112,16 +112,20 @@ is **below** the weighted average of the individual volatilities.
 ## 3. Annualisation
 
 Under the standard **i.i.d.** assumption (returns independent and identically
-distributed across days), variance adds across independent days, so over
-$A = 252$ trading days variance scales by $A$ and volatility by $\sqrt{A}$:
+distributed across periods), variance adds across independent periods, so over
+$A$ periods per year variance scales by $A$ and volatility by $\sqrt{A}$:
 
-$$ \Sigma_{\text{ann}} = A\Sigma_{\text{daily}},
-\qquad \sigma_{\text{ann}} = \sqrt{A}\,\sigma_{\text{daily}}. $$
+$$ \Sigma_{\text{ann}} = A\,\Sigma_{\text{period}},
+\qquad \sigma_{\text{ann}} = \sqrt{A}\,\sigma_{\text{period}}. $$
 
-This is why we can keep everything in daily units and only scale at the end.
+$A$ is the number of return periods in a year and matches the sampling frequency:
+$A = 252$ for **daily** returns, $A = 52$ for **weekly** (Fri–Fri) returns
+(`risk.decompose(..., periods_per_year)`, §8). This is why we can keep everything
+in per-period units and only scale at the end.
 
-> **Code.** `ann = sqrt(252)`; `ann_vol = sigma * ann`; each standalone volatility
-> is `sqrt(cov[i,i]) * ann`. If returns are **autocorrelated** (serial dependence
+> **Code.** `ann = sqrt(periods_per_year)` (252 daily / 52 weekly); `ann_vol =
+> sigma * ann`; each standalone volatility is `sqrt(cov[i,i]) * ann`. If returns
+> are **autocorrelated** (serial dependence
 > in the returns themselves), $\sqrt{252}$ over- or under-states the true annual
 > figure — positive autocorrelation inflates multi-period variance, negative
 > deflates it. This is distinct from *volatility clustering* (time-varying
@@ -315,12 +319,14 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
 The headline $\sigma_p$ is one number over the whole window — it blends every
 regime in that window into a single average (§8, *Stationarity*). To see how risk
 has actually moved, the Risk tab also plots **rolling annualised volatility** at
-12-month (252-day) and 36-month (756-day) windows:
+12-month and 36-month windows — $k = 252/756$ periods for daily returns, $52/156$
+for weekly:
 
-$$\sigma^{(k)}_t \;=\; \sqrt{252}\,\cdot\,\mathrm{std}\!\big(r_{p,\,t-k+1},\dots,r_{p,\,t}\big),
+$$\sigma^{(k)}_t \;=\; \sqrt{A}\,\cdot\,\mathrm{std}\!\big(r_{p,\,t-k+1},\dots,r_{p,\,t}\big),
 \qquad r_{p,t} = \mathbf{w}^\top \mathbf{r}_t$$
 
-where $r_{p,t}$ is the book's daily return at the **current, fixed** weights.
+with $A$ periods per year (252 daily / 52 weekly, as in §3), and $r_{p,t}$ the
+book's per-period return at the **current, fixed** weights.
 Holding weights constant isolates the effect of *market* conditions rather than
 past rebalancing. By construction the std of $r_p$ over the full window equals the
 headline $\sigma_p$, so the flat reference line and the rolling lines are the same
@@ -345,9 +351,9 @@ store (a future addition).
 | Daily returns | $r_t = P_t/P_{t-1}-1$ | `risk.decompose` → `pct_change` |
 | Covariance $\Sigma$ | §1.3 | `risk.decompose` → `rets.cov()` |
 | Portfolio volatility $\sigma_p$ | $\sqrt{\mathbf{w}^\top\Sigma\mathbf{w}}$ | `risk.decompose` → `sqrt(w @ cov @ w)` |
-| Annualise | $\times\sqrt{252}$ | `risk.decompose` → `ann` |
+| Annualise | $\times\sqrt{A}$ ($A$=252 daily / 52 weekly) | `risk.decompose` → `ann` |
 | Component RC | $w_i(\Sigma\mathbf{w})_i/\sigma_p$ | `risk.decompose` → `rc`, `rc_frac` |
-| Standalone volatility | $\sqrt{\Sigma_{ii}}\cdot\sqrt{252}$ | `risk.decompose` → `standalone` |
+| Standalone volatility | $\sqrt{\Sigma_{ii}}\cdot\sqrt{A}$ | `risk.decompose` → `standalone` |
 | Diversification | $\sigma_p/\sum_i w_i\sigma_i$ | `risk.decompose` → `wavg_vol` |
 | Within-weights | §6.1 | `overlap.effective_weights` |
 | Volume / share | §6.2 | `overlap.portfolio_volume`, Risk tab |

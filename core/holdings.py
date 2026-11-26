@@ -25,7 +25,7 @@ import pandas as pd
 # BlackRock "Location" / countryOfRisk -> ISO alpha-2, to match factsheet vectors.
 _COUNTRY = {
     "United States": "US", "Taiwan": "TW", "Korea (South)": "KR", "South Korea": "KR",
-    "China": "CN", "Hong Kong": "CN", "India": "IN", "Japan": "JP",
+    "China": "CN", "Hong Kong": "HK", "India": "IN", "Japan": "JP",
     "United Kingdom": "GB", "Germany": "DE", "France": "FR", "Netherlands": "NL",
     "Switzerland": "CH", "Spain": "ES", "Italy": "IT", "Sweden": "SE",
     "Denmark": "DK", "Finland": "FI", "Belgium": "BE", "Norway": "NO",

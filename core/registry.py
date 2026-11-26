@@ -12,7 +12,9 @@ For the prototype this is a static registry seeded with the core sleeve.
   window). These are seed guesses -- verify in the Prices "Data coverage"
   panel and override in the UI if one fails or is too short.
 - `holdings_url` is an iShares "Detailed Holdings" CSV for the *physical*
-  reference fund on the same index; when set it drives name-level look-through.
+  reference fund on the same (or closest available) index; when the reference
+  tracks a different index variant, `ref_index` records it and the look-through is
+  a labelled approximation. When set it drives name-level look-through.
   Left None here -> the app falls back to seeded factsheet exposures
   (core/exposures.py), which is the blueprint's synthetic fallback.
 """
@@ -26,7 +28,7 @@ from dataclasses import dataclass
 class Instrument:
     isin: str
     name: str
-    index: str
+    index: str                # benchmark the HELD fund tracks
     replication: str          # 'physical' | 'swap'
     currency: str
     price_ticker: str         # EUR listing for the correlation series
@@ -34,6 +36,8 @@ class Instrument:
     product_id: int | None = None     # iShares physical reference fund product id
     site: str = "uk-ishares"          # get-product-data targetSite
     locale: str = "en_GB"             # English labels; German-domiciled funds use en_DE
+    ref_index: str | None = None      # index the REFERENCE fund tracks, when it differs
+                                      # from `index` (so look-through is an approximation)
 
 
 # product_id = the physical iShares reference fund on the same index (for swap
@@ -53,11 +57,18 @@ REGISTRY: dict[str, Instrument] = {
         "swap", "EUR", "IQQJ.DE", product_id=251866),
     "IE000S3N6R34": Instrument(
         "IE000S3N6R34", "MSCI EM Swap USD (Acc)", "MSCI Emerging Markets",
-        "swap", "USD", "IS3N.DE", product_id=264659),
+        "swap", "USD", "IS3N.DE", product_id=264659,
+        # Reference fund 264659 is iShares Core MSCI EM *IMI* (adds small-caps);
+        # the held swap tracks standard MSCI EM (large+mid). Look-through is a
+        # superset approximation — ~0.99 corr for risk, broader for constituents.
+        ref_index="MSCI Emerging Markets IMI"),
     "IE00BG47KH54": Instrument(
         "IE00BG47KH54", "Vanguard Global Aggregate Bond EUR-H",
-        "Bloomberg Global Aggregate (EUR-H)", "physical", "EUR", "VAGF.DE",
-        product_id=291770),
+        # Vanguard tracks the *Float Adjusted & Scaled* variant; the iShares
+        # reference fund (291770) tracks the standard Bloomberg Global Agg.
+        "Bloomberg Global Aggregate Float Adjusted (EUR-H)", "physical", "EUR",
+        "VAGF.DE", product_id=291770,
+        ref_index="Bloomberg Global Aggregate (EUR-H)"),
     "IE00B3F81R35": Instrument(
         "IE00B3F81R35", "iShares Core EUR Corp Bond",
         "Bloomberg Euro Corporate Bond", "physical", "EUR", "IEAC.AS",
@@ -149,6 +160,7 @@ class Reference:
     locale: str
     index: str
     how: str          # 'registry' | 'index-hint' | 'name-match'
+    ref_index: str | None = None   # reference fund's own index, if it differs (proxy)
 
 
 def _norm_text(s: str) -> str:
@@ -175,7 +187,8 @@ def resolve_reference(isin: str, name: str | None = None,
     """
     inst = REGISTRY.get(isin)
     if inst and inst.product_id:
-        return Reference(inst.product_id, inst.site, inst.locale, inst.index, "registry")
+        return Reference(inst.product_id, inst.site, inst.locale, inst.index,
+                         "registry", inst.ref_index)
     canon, how = match_index(index), "index-hint"
     if not canon:
         canon, how = match_index(name), "name-match"

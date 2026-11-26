@@ -400,7 +400,11 @@ with tab_overlap:
 
     def _ref_label(i):
         r = registry.resolve_reference(i, name_of.get(i))
-        return f"{r.index} · {r.how}" if r else "—"
+        if not r:
+            return "—"
+        if r.ref_index:  # reference fund tracks a different (broader) index — a proxy
+            return f"{r.index} · {r.how} — ref: {r.ref_index} (approx.)"
+        return f"{r.index} · {r.how}"
 
     prov = pd.DataFrame([
         {"Fund": name_of.get(i, i), "Reference": _ref_label(i), "Source": lts[i].source,
