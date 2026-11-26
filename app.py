@@ -131,13 +131,17 @@ with st.sidebar:
     tracked_mode = mode == "tracked"
     weight_cfg = (
         st.column_config.NumberColumn(
-            "Weight %", format="%.2f", disabled=True,
-            help="Auto-computed from Units × price (normalised). Immutable in tracked "
-                 "mode — duplicate this book into a research portfolio to explore the "
-                 "same weights with longer-history proxies.",
+            "Weight", format="%.4f", disabled=True,
+            help="Auto-computed from Units × price as a fraction of the book (sums to "
+                 "1). Immutable in tracked mode — duplicate this book into a research "
+                 "portfolio to explore the same weights with longer-history proxies.",
         )
         if tracked_mode
-        else st.column_config.NumberColumn("Weight", format="%.3f", min_value=0.0)
+        else st.column_config.NumberColumn(
+            "Weight", format="%.4f", min_value=0.0,
+            help="Relative weight (any scale; normalised to sum to 1). Enter fractions, "
+                 "e.g. 0.6 / 0.4.",
+        )
     )
     edited = st.data_editor(
         st.session_state[seed_key],
@@ -199,15 +203,15 @@ weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
 # real weights — the whole point: explore those weights with longer-history proxies.
 # The editor's Weight column is disabled, so refreshing it in the seed is edit-safe.
 if mode == "tracked" and not pf.empty:
-    wpct = {i: round(weights.get(i, 0.0) * 100, 2) for i in pf["ISIN"]}
-    pf["Weight"] = pf["ISIN"].map(wpct).fillna(0.0)
+    wfrac = {i: round(weights.get(i, 0.0), 4) for i in pf["ISIN"]}  # fraction of book (sums to 1)
+    pf["Weight"] = pf["ISIN"].map(wfrac).fillna(0.0)
     _snap_w = pf[["ISIN", "Name", "Ticker", "Weight", "Units"]].to_csv(index=False)
     if st.session_state.get(f"snap::{active}") != _snap_w:
         store.save_portfolio(active, pf)
         st.session_state[f"snap::{active}"] = _snap_w
     seed = st.session_state.get(seed_key)
     if seed is not None and "ISIN" in getattr(seed, "columns", []):
-        new_w = seed["ISIN"].map(wpct).fillna(0.0)
+        new_w = seed["ISIN"].map(wfrac).fillna(0.0)
         if "Weight" not in seed or not new_w.equals(seed["Weight"]):
             st.session_state[seed_key] = seed.assign(Weight=new_w)
 
