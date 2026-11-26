@@ -295,9 +295,10 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   calendar date sit ~15h apart — cross-market co-movement surfaces a day late,
   biasing daily correlations **down** (the Epps effect). The app's **weekly
   (Fri–Fri)** sampling (`prices.to_frequency`: forward-fill to the latest close,
-  then take the week-ending value) absorbs that one-day lag and the
-  holiday-intersection loss; annualisation then uses $\sqrt{52}$ instead of
-  $\sqrt{252}$. Daily is the default and remains available as a secondary view.
+  then take the week-ending value) substantially **reduces** — but does not
+  eliminate — that one-day lag, and avoids the holiday-intersection loss;
+  annualisation then uses $\sqrt{52}$ instead of $\sqrt{252}$. Daily is the default
+  and remains available as a secondary view.
 - **Stationarity / i.i.d.** A single $\Sigma$ and $\sqrt{252}$ scaling assume
   returns are roughly stationary and serially uncorrelated. Real returns show
   volatility clustering and fat tails.
