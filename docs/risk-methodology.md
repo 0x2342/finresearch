@@ -26,6 +26,29 @@ scale-free, so they can be pooled statistically and compared across instruments.
 > `pct_change` is exactly $P_t/P_{t-1}-1$. The `dropna(how="any")` inner-joins
 > the series, so the usable window is the **intersection** of all histories.
 
+**Why simple returns, not log returns.** This is a deliberate choice, because the
+tool's core job is *cross-asset* aggregation. A portfolio's simple return is
+*exactly* the weighted sum of its holdings' simple returns,
+
+$$ r_{p,t} = \sum_i w_i\, r_{i,t}, $$
+
+which is what makes the portfolio-variance identity $\sigma_p^2 =
+\mathbf{w}^\top\Sigma\mathbf{w}$ (§2) and the Euler risk decomposition (§4) exact.
+Log returns are additive across *time* (the log return over a window is the sum of
+the daily log returns) — excellent for a single series' annualisation — but they
+are **not** additive across *assets*: $\ln(1+\sum_i w_i r_i) \neq \sum_i w_i
+\ln(1+r_i)$ (they differ by a convexity term). Using log returns for the
+covariance and then applying $\mathbf{w}^\top\Sigma\mathbf{w}$ would therefore be
+internally inconsistent — the weighted sum of log returns is not the portfolio's
+log return. Since the whole point of the Risk tab is portfolio variance and its
+decomposition, **simple returns are the theoretically correct default**, not a
+shortcut. In practice the distinction is also numerically tiny at daily/weekly
+frequency ($\ln(1+r)\approx r - r^2/2$, so a 1% move differs by ~0.005%), so the
+choice changes no conclusion — it is made for consistency, not magnitude. (An
+optional simple/log toggle, and the theoretically-pure split that would keep the
+decomposition on simple returns while offering log for correlation and standalone
+volatilities, are noted in the backlog.)
+
 ### 1.2 Volatility = standard deviation of returns
 
 With sample mean $\hat\mu = \frac1T\sum_{t=1}^T r_t$, the **variance** measures

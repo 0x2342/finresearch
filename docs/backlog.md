@@ -92,6 +92,18 @@ remaining weakness, and added three refinements + a stretch goal. Ordered.
   weights — three genuinely different stress sources. Natural extension once weekly
   sampling lands.
 
+- **[optional] Simple ↔ log return toggle.** Decided (2026-11-26) to keep **simple
+  returns by design** — they're additive across assets, which is what makes
+  `wᵀΣw` and the Euler decomposition exact (log returns are additive across time,
+  not assets; rationale now in risk-methodology.md §1.1). The daily/weekly
+  numerical difference is negligible, so this is optionality/rigor, not a fix. Two
+  future shapes if revisited: **(A)** a global `return_method` toggle threaded like
+  `frequency`, simple staying default, with a documented note that log mode makes
+  the portfolio aggregation a (negligible) approximation; **(B)** the pure split —
+  log for the Correlation tab and standalone volatilities (where it's cleanly
+  valid), simple kept for the portfolio decomposition (fiddlier UX: two
+  conventions on one screen).
+
 - **Estimator stability / regime awareness.** ✅ **Done — `87a61f0`.** A single
   full-window covariance blends regimes (COVID, 2022 rate shock, AI
   concentration). Shipped: the Risk tab plots **rolling 12-month (252d) and

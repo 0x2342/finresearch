@@ -92,6 +92,12 @@ coverage: an unpriced holding has no market value; its € volatility is scaled 
 priced capital.) The window is set by the shortest-history ticker, and
 correlations rise toward 1 in a crash — so realised drawdown risk can exceed this.
 
+Returns are **simple** (`P_t/P_{t-1} − 1`), by design: a portfolio's simple return
+is exactly the weighted sum of its holdings', which is what makes `wᵀΣw` and the
+Euler decomposition exact — log returns are additive across time but not across
+assets. At daily/weekly frequency the difference is negligible anyway. See
+[docs/risk-methodology.md §1.1](docs/risk-methodology.md).
+
 Because one full-window number averages across regimes, the tab also plots
 **rolling 12-month and 36-month annualized volatility** (book return at constant
 current weights) over a dotted full-window-σ reference — so a calm recent stretch
