@@ -130,20 +130,25 @@ def get_prices(ticker: str, period: str = "5y") -> pd.Series | None:
     return c
 
 
-def to_frequency(panel: pd.DataFrame, freq: str = "daily") -> pd.DataFrame:
+def to_frequency(panel: pd.DataFrame, freq: str = "daily", max_stale: int = 5) -> pd.DataFrame:
     """Resample a daily price panel to the chosen return frequency.
 
     "weekly" uses a Friday valuation convention: forward-fill to the most recent
-    available close, then take the week-ending (W-FRI) value. This damps the Epps
+    available close, then take the week-ending (W-FRI) value. This reduces the Epps
     effect — US and Asian closes on the same calendar day sit hours apart, biasing
     daily cross-correlations down — and sidesteps the holiday-intersection data
     loss of complete-case daily returns. "daily" is a pass-through. Panel `attrs`
     (sources / currencies / converted) are preserved.
+
+    `max_stale` caps the forward-fill at that many trading rows (~1 week by
+    default): a week whose most recent close is older than that is left NaN rather
+    than valued from a stale price, so a holiday or a halt can't masquerade as a
+    flat (zero-return) week.
     """
     if panel is None or panel.empty or freq == "daily":
         return panel
     if freq == "weekly":
-        out = panel.ffill().resample("W-FRI").last()
+        out = panel.ffill(limit=max_stale).resample("W-FRI").last()
         out.attrs = dict(getattr(panel, "attrs", {}))
         return out
     return panel

@@ -17,17 +17,17 @@ below was verified in-code. Two are regressions we introduced (⚠).
   (actual listing → units/valuation/weights) from `RiskProxyTicker` (long-history
   index proxy → covariance/correlation). Biggest lift — schema across store,
   overlap, app, registry, UI.
-- **R3.2 EM reference is the IMI index, not plain MSCI EM.** Registry maps ISIN
+- **R3.2 EM reference is the IMI index, not plain MSCI EM.** ✅ **Done — `47dc646`.** Registry maps ISIN
   IE000S3N6R34 (benchmark *MSCI Emerging Markets*) → product 264659 = iShares Core
   MSCI EM **IMI** (large+mid+small). IMI ≠ standard EM (large+mid): ~0.99-correlated
   for risk, but security-level look-through pulls in small caps not in the target.
   Fix: relabel the registry to the truth (it is the IMI fund) now; swap to an exact
   standard-EM physical tracker later if one with good history + holdings API exists.
-- **R3.3 Global Agg benchmark mismatch.** Vanguard IE00BG47KH54 tracks Bloomberg
+- **R3.3 Global Agg benchmark mismatch.** ✅ **Done — `47dc646`.** Vanguard IE00BG47KH54 tracks Bloomberg
   Global Agg *Float Adjusted & Scaled*; registry points to iShares 291770 (Bloomberg
   Global Agg, not float-adjusted). Close, not identical. Fix: qualify the label as a
   proxy now; exact physical reference later.
-- **R3.4 Use ISIN, not issuer name, as the overlap key.** `holdings._accumulate`
+- **R3.4 Use ISIN, not issuer name, as the overlap key.** ✅ **Done — `042dd24`.** `holdings._accumulate`
   aggregates by the `issueName` string, so a bond ETF's distinct bonds from one
   issuer (different maturities) collapse → issuer-level, not security-level, overlap
   — wrong exactly when comparing a corp-bond ETF to the global agg. Fix: key by ISIN
@@ -35,30 +35,30 @@ below was verified in-code. Two are regressions we introduced (⚠).
   (name/LEI), sector.
 
 ### P2 — data quality
-- **R3.5 Stale-price max age for weekly sampling.** `ffill().resample("W-FRI").last()`
+- **R3.5 Stale-price max age for weekly sampling.** ✅ **Done — `042dd24`.** `ffill().resample("W-FRI").last()`
   has no age cap — a missing Friday close is filled by an arbitrarily old price with
   no staleness flag. Add a maximum observation age; reject/flag stale weekly prices.
   (Raised in round 2, deferred; now due.)
-- **⚠ R3.6 Persist price-source provenance in the cache.** Regression in the round-2
+- **⚠ R3.6 Persist price-source provenance in the cache.** ✅ **Done — `27bd973`.** Regression in the round-2
   #4 work: the parquet cache stores only `close`, so a reload tags the series
   `source="cache"` and loses whether it came from yfinance (total-return) or Stooq
   (raw) — the Stooq-unadjusted warning silently vanishes after a cache reload.
   Persist source + retrieval timestamp + adjustment + currency + period with the cache.
-- **R3.7 Report sector/country data coverage.** `_accumulate` drops unclassified
+- **R3.7 Report sector/country data coverage.** ✅ **Done — `042dd24`.** `_accumulate` drops unclassified
   holdings then normalises to 100%, hiding incomplete source data. Report
   per-dimension coverage (name / sector / country) before normalisation.
-- **R3.8 Preserve Hong Kong separately from China.** `holdings._COUNTRY` maps
+- **R3.8 Preserve Hong Kong separately from China.** ✅ **Done — `47dc646`.** `holdings._COUNTRY` maps
   "Hong Kong"→"CN"; consolidation should be an analytical view, not forced at
   ingestion. Keep HK; offer optional consolidation.
 
 ### P3 — usability & methodology
-- **⚠ R3.9 Explicit Research-portfolio notional.** Allocation's research "volume" =
+- **⚠ R3.9 Explicit Research-portfolio notional.** ✅ **Done — `27bd973`.** Allocation's research "volume" =
   Σ raw Weight. Our fraction convention (weights sum to 1) makes every research
   portfolio's volume ≈ 1, so each reads as an equal share of a combined book
   regardless of intended size → satellite sizing misleading. Fix: an explicit
   per-portfolio notional / allocation multiplier (preferred over relying on raw
   weight mass).
-- **R3.10 Sync daily/weekly in the methodology.** §annualisation, the code map
+- **R3.10 Sync daily/weekly in the methodology.** ✅ **Done — `47dc646`.** §annualisation, the code map
   (√252) and §9 rolling (252/756) still read daily-only though the code is
   frequency-aware (52/156, √52) — generalise the notation. Epps wording fixed
   (weekly *reduces*, not *absorbs*) done in this commit.

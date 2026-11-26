@@ -7,7 +7,8 @@ Two input shapes, auto-detected:
   - a BlackRock "Detailed Holdings" CSV (kept as a fallback / for fixtures).
 
 `source` may be an http(s) URL or a local file path. `load()` returns a dict:
-  {"names": {...}, "sectors": {...}, "countries": {...}, "as_of": str|None, "n": int}
+  {"securities": {isin→w}, "issuers": {name→w}, "labels": {isin→name},
+   "sectors": {...}, "countries": {...}, "coverage": {...}, "as_of": str|None, "n": int}
 with weights as fractions of the fund, cash/derivatives excluded, sector/country
 aggregated up from the per-holding fields.
 
@@ -112,10 +113,14 @@ def _read_text(source: str):
         return None, type(e).__name__
 
 
-def _accumulate(names, weights, sectors, locations, assets):
-    nm: dict[str, float] = {}
+def _accumulate(names, weights, sectors, locations, assets, isins=None):
+    sic: dict[str, float] = {}    # security-level, keyed by ISIN (fallback name)
+    iss: dict[str, float] = {}    # issuer-level, keyed by name
+    lbl: dict[str, str] = {}      # security key -> display label
     sec: dict[str, float] = {}
     ctry: dict[str, float] = {}
+    # pre-normalisation weight that carried each identifier, to report coverage
+    cov = {"total": 0.0, "security": 0.0, "sector": 0.0, "country": 0.0}
     for i, raw_name in enumerate(names):
         w = weights[i] if i < len(weights) else None
         if w in (None, ""):
@@ -130,17 +135,29 @@ def _accumulate(names, weights, sectors, locations, assets):
         s_raw = str(sectors[i]) if sectors and i < len(sectors) and sectors[i] else ""
         if asset in _CASH_ASSET or s_raw in _CASH_SECTOR:
             continue
+        cov["total"] += wf
         name = str(raw_name).strip() if raw_name else ""
+        isin = str(isins[i]).strip() if isins and i < len(isins) and isins[i] else ""
+        # Security identity: ISIN distinguishes distinct bonds of one issuer
+        # (different maturities) that share a name; fall back to name when absent.
+        key = isin or name
+        if key:
+            sic[key] = sic.get(key, 0.0) + wf
+            lbl.setdefault(key, name or isin)
+            cov["security"] += wf
         if name:
-            nm[name] = nm.get(name, 0.0) + wf
+            iss[name] = iss.get(name, 0.0) + wf
         if s_raw:
             s = _SECTOR.get(s_raw, s_raw)
             sec[s] = sec.get(s, 0.0) + wf
+            cov["sector"] += wf
         loc = locations[i] if locations and i < len(locations) else None
         if loc:
             c = _COUNTRY.get(str(loc), str(loc))
             ctry[c] = ctry.get(c, 0.0) + wf
-    return {"names": nm, "sectors": sec, "countries": ctry, "n": len(nm)}
+            cov["country"] += wf
+    return {"securities": sic, "issuers": iss, "labels": lbl,
+            "sectors": sec, "countries": ctry, "n": len(sic), "coverage": cov}
 
 
 def _parse_json(text: str) -> dict | None:
@@ -158,13 +175,14 @@ def _parse_json(text: str) -> dict | None:
     names, weights = arr("issueName"), arr("holdingPercent")
     if not names or not weights:
         return None
-    out = _accumulate(names, weights, arr("sectorName"), arr("countryOfRisk"), arr("assetClass"))
+    out = _accumulate(names, weights, arr("sectorName"), arr("countryOfRisk"),
+                      arr("assetClass"), isins=arr("isin"))
     as_of = None
     node = dp.get("asOfDate")
     if isinstance(node, dict):
         as_of = node.get("formattedValue")
     out["as_of"] = as_of
-    return out if out["names"] else None
+    return out if out["securities"] else None
 
 
 def _parse_csv(text: str) -> dict | None:
@@ -194,7 +212,7 @@ def _parse_csv(text: str) -> dict | None:
 
     nc, wc = col("name"), col("weight (%)", "weight")
     sc, lc = col("sector"), col("location")
-    ac = col("asset class")
+    ac, ic = col("asset class"), col("isin")
     if not nc or not wc:
         return None
     out = _accumulate(
@@ -202,15 +220,18 @@ def _parse_csv(text: str) -> dict | None:
         list(df[sc]) if sc else None,
         list(df[lc]) if lc else None,
         list(df[ac]) if ac else None,
+        isins=list(df[ic]) if ic else None,
     )
     out["as_of"] = as_of
-    return out if out["names"] else None
+    return out if out["securities"] else None
 
 
 def load(source: str) -> dict:
     """Normalized look-through for a holdings URL/path.
 
-    On success returns {"names", "sectors", "countries", "as_of", "n"}.
+    On success returns {"securities", "issuers", "labels", "sectors",
+    "countries", "coverage", "as_of", "n"}. `securities` is keyed by ISIN
+    (fallback name); `issuers` by name; `labels` maps security key -> display name.
     On failure returns {"error": "<reason>"} so callers can surface why.
     """
     text, err = _read_text(source)
@@ -218,7 +239,7 @@ def load(source: str) -> dict:
         return {"error": err or "fetch failed"}
     if text.lstrip().startswith("{"):
         parsed = _parse_json(text)
-        if parsed and parsed.get("names"):
+        if parsed and parsed.get("securities"):
             return parsed
         try:  # recognise the iShares error-JSON body
             d = json.loads(text)
@@ -228,6 +249,6 @@ def load(source: str) -> dict:
             pass
         return {"error": "no holdings in response"}
     parsed = _parse_csv(text)
-    if parsed and parsed.get("names"):
+    if parsed and parsed.get("securities"):
         return parsed
     return {"error": "could not parse holdings"}

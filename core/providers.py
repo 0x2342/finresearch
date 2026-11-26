@@ -28,11 +28,13 @@ def _norm(v: dict[str, float]) -> dict[str, float]:
 
 @dataclass
 class LookThrough:
-    vectors: dict[str, dict[str, float]] = field(default_factory=dict)  # dim -> {label: w}
+    vectors: dict[str, dict[str, float]] = field(default_factory=dict)  # dim -> {key: w}
     source: str = "none"          # "name-level" | "factsheet" | "none"
     as_of: str | None = None
     n_names: int | None = None
     note: str | None = None       # failure reason when name-level was attempted
+    labels: dict[str, str] = field(default_factory=dict)  # security key (ISIN) -> name
+    coverage: dict[str, float] | None = None              # dim -> covered weight
 
     def vector(self, dimension: str) -> dict[str, float]:
         return self.vectors.get(dimension, {})
@@ -41,16 +43,19 @@ class LookThrough:
 def _name_level(url: str):
     """Return (LookThrough, None) on success, or (None, error_reason)."""
     h = holdings.load(url)
-    if h and h.get("names"):
+    if h and h.get("securities"):
         return LookThrough(
             vectors={
-                "Holdings (names)": _norm(h["names"]),
+                "Holdings (security)": _norm(h["securities"]),  # ISIN-keyed, true security overlap
+                "Holdings (issuer)": _norm(h["issuers"]),       # name-keyed, common-issuer exposure
                 "Sector": _norm(h["sectors"]),
                 "Country": _norm(h["countries"]),
             },
             source="name-level",
             as_of=h.get("as_of"),
             n_names=h["n"],
+            labels=h.get("labels", {}),
+            coverage=h.get("coverage"),
         ), None
     return None, (h.get("error") if isinstance(h, dict) else "fetch failed")
 

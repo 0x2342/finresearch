@@ -31,7 +31,7 @@ TIER_LABEL = {
     "name": "Name-level only",
     "factsheet": "Factsheet only",
 }
-DIMS = ["Sector", "Country", "Holdings (names)"]
+DIMS = ["Sector", "Country", "Holdings (security)", "Holdings (issuer)"]
 
 
 def _f(x, default: float = 0.0) -> float:
@@ -399,6 +399,10 @@ with tab_overlap:
     lts = {i: cached_lookthrough(i, tier, source_of(i)) for i in weights}
     held = {i: lts[i].vector(dim) for i in weights if lts[i].vector(dim)}
     uncovered = [name_of.get(i, i) for i in weights if not lts[i].vector(dim)]
+    # ISIN keys -> display names for the security dimension (identity elsewhere)
+    all_labels = {}
+    for i in weights:
+        all_labels.update(getattr(lts[i], "labels", {}) or {})
 
     def _ref_label(i):
         r = registry.resolve_reference(i, name_of.get(i))
@@ -408,10 +412,18 @@ with tab_overlap:
             return f"{r.index} · {r.how} — ref: {r.ref_index} (approx.)"
         return f"{r.index} · {r.how}"
 
+    def _cov(i, key):
+        c = getattr(lts[i], "coverage", None)
+        if not c or not c.get("total"):
+            return "—"
+        return f"{c.get(key, 0.0) / c['total']:.0%}"
+
     prov = pd.DataFrame([
         {"Fund": name_of.get(i, i), "Reference": _ref_label(i), "Source": lts[i].source,
          "As of": lts[i].as_of or "—",
          "Names": lts[i].n_names if lts[i].n_names else "—",
+         "Sec%": _cov(i, "security"), "Sector%": _cov(i, "sector"),
+         "Country%": _cov(i, "country"),
          "Note": lts[i].note or ""}
         for i in weights
     ])
@@ -433,12 +445,13 @@ with tab_overlap:
             "Each vector is normalized to 100% of its invested exposure "
             "(cash/derivatives — and any uncovered factsheet tail — excluded from the "
             "base), so self-overlap reads 100%. Sector/Country overlap measures shared "
-            "allocation *shape*, not shared securities — use the Holdings (names) "
-            "dimension for true redundancy (equity vs bond ≈ 0 there)."
+            "allocation *shape*, not shared securities — use **Holdings (security)** "
+            "(ISIN-keyed) for true redundancy (equity vs bond ≈ 0 there), or "
+            "**Holdings (issuer)** for common-issuer exposure."
         )
 
         st.markdown("**Portfolio look-through** — aggregate exposure by effective weight.")
-        agg = overlap.portfolio_lookthrough(weights, held).head(20)
+        agg = overlap.portfolio_lookthrough(weights, held).rename(index=all_labels).head(20)
         covered = sum(weights[i] for i in held)
         bar = px.bar(agg.rename("weight").reset_index(), x="weight", y="index", orientation="h")
         bar.update_layout(
@@ -459,6 +472,7 @@ with tab_overlap:
         st.metric(f"Overlap ({dim})", f"{overlap.weight_overlap(held[a], held[b]):.0%}")
         comp = pd.DataFrame({name_of.get(a, a): held[a], name_of.get(b, b): held[b]}).fillna(0.0)
         comp = (comp * 100).round(1).sort_values(comp.columns[0], ascending=False).head(25)
+        comp = comp.rename(index=all_labels)  # ISIN -> name for the security dimension
         st.dataframe(comp, width="stretch")
 
 # --------------------------------------------------------------------------- #
