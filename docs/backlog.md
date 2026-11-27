@@ -60,11 +60,16 @@ the test suite. None change the risk maths — they're silent-failure and ops ga
   `note="no source URL configured"`. Spec:
   `test_providers.py::test_name_tier_without_url_explains_itself`.
 
-### Robustness / ops — open, pending triage
-- **#11 Silent write failures.** `save_portfolio` / `save_sources` / `prices._save`
-  swallow all exceptions, so a full disk / permission error looks like a successful
-  auto-save. Surface a session-level "save failed" flag. *(Recommended before a live
-  tracked book.)*
+### Robustness / ops
+- **#11 Silent write failures.** ✅ **Done.** `save_portfolio` / `save_sources` now
+  return a success bool; the app surfaces a persistent `st.error` and **does not
+  advance the save snapshot** on failure, so a full disk / permission error is
+  visible and the write keeps retrying until it succeeds (instead of the user
+  believing an edit auto-saved). `prices._save` stays best-effort by design (it's a
+  refetchable price cache, not user data — documented in-code). Tests cover both the
+  success and failure returns.
+
+### Open — pending triage
 - **#10 Cache has no TTL.** Every cold `get_panel` refetches yfinance even on a
   minutes-old cache; the only refresh control is a nuclear `clear()`. Add a `max_age`
   (serve-if-fresh / refetch-if-stale) so the "Refresh prices" button means something.

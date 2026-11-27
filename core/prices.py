@@ -34,6 +34,9 @@ _ADJUSTMENT = {"yfinance": "total-return", "stooq": "raw-close"}
 
 
 def _save(ticker: str, s: pd.Series) -> None:
+    # Best-effort by design: this is a refetchable price cache, not user data, so a
+    # failed write is silently tolerated (unlike store.save_portfolio/save_sources,
+    # whose failures are surfaced). Worst case the next run refetches.
     try:
         s.to_frame("close").to_parquet(_cache_file(ticker))
     except Exception:

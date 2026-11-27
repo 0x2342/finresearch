@@ -100,12 +100,16 @@ def load_index() -> dict | None:
     return None
 
 
-def save_portfolio(slug: str, df: pd.DataFrame) -> None:
-    os.makedirs(_DIR, exist_ok=True)
+def save_portfolio(slug: str, df: pd.DataFrame) -> bool:
+    """Persist a portfolio's rows. Returns True on success, False if the write
+    failed (full disk / permissions) — the caller surfaces a failure rather than
+    letting the user believe an edit auto-saved when it didn't."""
     try:
+        os.makedirs(_DIR, exist_ok=True)
         df.reindex(columns=COLUMNS).to_csv(_csv_file(slug), index=False)
+        return True
     except Exception:
-        pass
+        return False
 
 
 def load_portfolio(slug: str) -> pd.DataFrame | None:
@@ -217,10 +221,13 @@ def load_sources() -> dict[str, str]:
     return {}
 
 
-def save_sources(mapping: dict[str, str]) -> None:
+def save_sources(mapping: dict[str, str]) -> bool:
+    """Persist the ISIN→holdings-URL map. Returns True on success, False on a write
+    failure (full disk / permissions) so the caller can surface it."""
     try:
         os.makedirs(os.path.dirname(_SOURCES), exist_ok=True)
         rows = [{"ISIN": k, "URL": v} for k, v in mapping.items() if k and v]
         pd.DataFrame(rows, columns=["ISIN", "URL"]).to_csv(_SOURCES, index=False)
+        return True
     except Exception:
-        pass
+        return False

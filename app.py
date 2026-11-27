@@ -209,8 +209,11 @@ pf["RiskProxy"] = pf["RiskProxy"].fillna("").astype(str).str.strip()
 
 _snap = pf[["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"]].to_csv(index=False)
 if st.session_state.get(f"snap::{active}") != _snap:
-    store.save_portfolio(active, pf)
-    st.session_state[f"snap::{active}"] = _snap
+    if store.save_portfolio(active, pf):
+        st.session_state[f"snap::{active}"] = _snap  # advance only on a confirmed write
+    else:
+        st.error("⚠️ Couldn't save your changes to disk (full disk or permissions?). "
+                 "Recent edits are not persisted — fix the problem and re-edit a cell to retry.")
 
 ticker_of = {r["ISIN"]: r["Ticker"] for _, r in pf.iterrows()}          # held listing → valuation
 risk_of = {r["ISIN"]: store.risk_ticker(r) for _, r in pf.iterrows()}   # proxy (or Ticker) → risk
@@ -246,8 +249,10 @@ if mode == "tracked" and not pf.empty:
     pf["Weight"] = pf["ISIN"].map(wfrac).fillna(0.0)
     _snap_w = pf[["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"]].to_csv(index=False)
     if st.session_state.get(f"snap::{active}") != _snap_w:
-        store.save_portfolio(active, pf)
-        st.session_state[f"snap::{active}"] = _snap_w
+        if store.save_portfolio(active, pf):
+            st.session_state[f"snap::{active}"] = _snap_w
+        else:
+            st.error("⚠️ Couldn't save the derived weights to disk (full disk or permissions?).")
     seed = st.session_state.get(seed_key)
     if seed is not None and "ISIN" in getattr(seed, "columns", []):
         new_w = seed["ISIN"].map(wfrac).fillna(0.0)
@@ -442,8 +447,10 @@ with tab_overlap:
         if i and u and u.lower() != "nan":
             sources_map[i] = u
     if st.session_state.get("sources_snap") != str(sources_map):
-        store.save_sources(sources_map)
-        st.session_state["sources_snap"] = str(sources_map)
+        if store.save_sources(sources_map):
+            st.session_state["sources_snap"] = str(sources_map)
+        else:
+            st.error("⚠️ Couldn't save look-through sources to disk (full disk or permissions?).")
 
     def source_of(i):
         return registry.source_for(i, sources_map.get(i), name_of.get(i))

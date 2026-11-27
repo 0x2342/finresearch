@@ -77,6 +77,27 @@ def test_set_mode_and_notional_roundtrip(store_tmp):
 
 
 def test_sources_roundtrip(store_tmp):
-    store_tmp.save_sources({"IE00X": "https://example.com/h.csv", "": "skip", "Z": ""})
+    assert store_tmp.save_sources({"IE00X": "https://example.com/h.csv", "": "skip", "Z": ""}) is True
     out = store_tmp.load_sources()
     assert out == {"IE00X": "https://example.com/h.csv"}
+
+
+def test_save_portfolio_reports_success(store_tmp):
+    ok = store_tmp.save_portfolio("p", pd.DataFrame(columns=store_tmp.COLUMNS))
+    assert ok is True
+
+
+def test_save_portfolio_reports_failure(store_tmp, tmp_path, monkeypatch):
+    # make the target directory uncreatable: its parent is a regular file (#11 —
+    # a write failure must be reported, not silently swallowed)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x")
+    monkeypatch.setattr(store_tmp, "_DIR", str(blocker / "sub"))
+    assert store_tmp.save_portfolio("p", pd.DataFrame(columns=store_tmp.COLUMNS)) is False
+
+
+def test_save_sources_reports_failure(store_tmp, tmp_path, monkeypatch):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x")
+    monkeypatch.setattr(store_tmp, "_SOURCES", str(blocker / "sub" / "sources.csv"))
+    assert store_tmp.save_sources({"IE00X": "https://example.com/h.csv"}) is False
