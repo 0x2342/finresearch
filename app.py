@@ -22,7 +22,7 @@ MODE_LABEL = {
     "research": "Research (weights from Weight column)",
     "tracked": "Tracked (weights from Units × price)",
 }
-EMPTY = pd.DataFrame(columns=["ISIN", "Name", "Ticker", "Weight", "Units"])
+EMPTY = pd.DataFrame(columns=["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"])
 MIN_HISTORY_YEARS = 3  # covariance needs ~3y; shorter series get flagged
 FREQ_PERIODS = {"daily": 252, "weekly": 52}      # periods/year for annualisation
 FREQ_WINDOWS = {"daily": (252, 756), "weekly": (52, 156)}  # rolling-vol 12m/36m
@@ -47,7 +47,11 @@ def _registry_seed() -> pd.DataFrame:
         {
             "ISIN": i.isin,
             "Name": i.name,
-            "Ticker": i.price_ticker,
+            # price_ticker is the registry's RISK PROXY, not necessarily the held
+            # listing — seed it into RiskProxy and leave Ticker for the user's actual
+            # holding, so a seeded tracked book never values units on a proxy.
+            "Ticker": i.holding_ticker or "",
+            "RiskProxy": i.price_ticker,
             "Weight": registry.DEFAULT_WEIGHTS.get(i.isin, 0.0),
             "Units": 0.0,
         }
@@ -108,11 +112,21 @@ with st.sidebar:
         if st.button("Rename active") and nm.strip():
             store.rename(active, nm)
             st.rerun()
-        if len(slugs) > 1 and st.button("Delete active"):
-            store.delete_portfolio(active)
-            for k in [k for k in st.session_state if "::" in k]:
-                st.session_state.pop(k, None)
-            st.rerun()
+        if len(slugs) > 1:
+            # Fresh checkbox key after each delete → it always re-arms unticked, so a
+            # delete can never be one click away on the next portfolio.
+            _dn = st.session_state.get("_del_n", 0)
+            confirm_del = st.checkbox(
+                f"Confirm delete “{name_by_slug.get(active, active)}”",
+                key=f"confirm_del::{_dn}",
+                help="Deletion is permanent — tick to enable the button.",
+            )
+            if st.button("Delete active", disabled=not confirm_del):
+                store.delete_portfolio(active)
+                for k in [k for k in st.session_state if "::" in k]:
+                    st.session_state.pop(k, None)
+                st.session_state["_del_n"] = _dn + 1
+                st.rerun()
 
     period = st.selectbox("Price history", ["1y", "2y", "5y", "10y"], index=2)
     freq_label = st.selectbox(
@@ -124,7 +138,15 @@ with st.sidebar:
     freq = "weekly" if freq_label.startswith("Weekly") else "daily"
 
     # Editor seeded once per slug; its own widget key carries edits across reruns.
+    # When the active portfolio changes, drop the stale seed/editor/snapshot so the
+    # editor reloads from disk — otherwise a once-set seed re-renders old data and
+    # overwrites saved edits on the next save (e.g. a RiskProxy added after the first
+    # view would be lost when returning to the portfolio).
     seed_key = f"seed::{active}"
+    if st.session_state.get("_seeded_active") != active:
+        for _k in (seed_key, f"editor::{active}", f"snap::{active}"):
+            st.session_state.pop(_k, None)
+        st.session_state["_seeded_active"] = active
     if seed_key not in st.session_state:
         df0 = store.load_portfolio(active)
         st.session_state[seed_key] = EMPTY.copy() if (df0 is None or df0.empty) else df0
@@ -149,14 +171,23 @@ with st.sidebar:
         width="stretch",
         hide_index=True,
         column_config={
+            "Ticker": st.column_config.TextColumn(
+                "Ticker", help="The actual held listing — used for valuation, weights "
+                               "and allocation (e.g. your real ETF on Xetra)."),
+            "RiskProxy": st.column_config.TextColumn(
+                "RiskProxy", help="Optional long-history index proxy for covariance / "
+                                  "correlation (e.g. a swap's index tracker). Blank = use "
+                                  "Ticker. Leave blank when the held listing has enough history."),
             "Weight": weight_cfg,
             "Units": st.column_config.NumberColumn(format="%.4f", min_value=0.0),
         },
+        column_order=["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"],
         key=f"editor::{active}",
     )
     st.caption(
         ("Units auto-save · Weight is computed from Units × price · "
          if tracked_mode else "Edits auto-save · ")
+        + "Ticker = held listing · RiskProxy = optional risk series · "
         + MODE_LABEL[mode]
     )
 
@@ -172,13 +203,15 @@ pf["Name"] = pf.apply(
     axis=1,
 )
 pf["Ticker"] = pf["Ticker"].fillna("").astype(str).str.strip()
+pf["RiskProxy"] = pf["RiskProxy"].fillna("").astype(str).str.strip()
 
-_snap = pf[["ISIN", "Name", "Ticker", "Weight", "Units"]].to_csv(index=False)
+_snap = pf[["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"]].to_csv(index=False)
 if st.session_state.get(f"snap::{active}") != _snap:
     store.save_portfolio(active, pf)
     st.session_state[f"snap::{active}"] = _snap
 
-ticker_of = {r["ISIN"]: r["Ticker"] for _, r in pf.iterrows()}
+ticker_of = {r["ISIN"]: r["Ticker"] for _, r in pf.iterrows()}          # held listing → valuation
+risk_of = {r["ISIN"]: store.risk_ticker(r) for _, r in pf.iterrows()}   # proxy (or Ticker) → risk
 name_of = {r["ISIN"]: r["Name"] for _, r in pf.iterrows()}
 
 
@@ -192,9 +225,13 @@ def cached_lookthrough(isin: str, tier: str, url: str | None):
     return providers.resolve(isin, tier, url)
 
 
-all_tickers = tuple(t for t in ticker_of.values() if t)
-panel = cached_panel(all_tickers, period) if all_tickers else pd.DataFrame()
-last = panel.ffill().iloc[-1] if not panel.empty else pd.Series(dtype=float)
+# Two panels: `panel` is the risk/correlation series (RiskProxy, fallback Ticker);
+# `last` holds valuation prices from the actual held Ticker.
+risk_tickers = tuple(dict.fromkeys(t for t in risk_of.values() if t))
+panel = cached_panel(risk_tickers, period) if risk_tickers else pd.DataFrame()
+hold_tickers = tuple(dict.fromkeys(t for t in ticker_of.values() if t))
+hold_panel = cached_panel(hold_tickers, period) if hold_tickers else pd.DataFrame()
+last = hold_panel.ffill().iloc[-1] if not hold_panel.empty else pd.Series(dtype=float)
 
 weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
 
@@ -205,7 +242,7 @@ weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
 if mode == "tracked" and not pf.empty:
     wfrac = {i: round(weights.get(i, 0.0), 4) for i in pf["ISIN"]}  # fraction of book (sums to 1)
     pf["Weight"] = pf["ISIN"].map(wfrac).fillna(0.0)
-    _snap_w = pf[["ISIN", "Name", "Ticker", "Weight", "Units"]].to_csv(index=False)
+    _snap_w = pf[["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"]].to_csv(index=False)
     if st.session_state.get(f"snap::{active}") != _snap_w:
         store.save_portfolio(active, pf)
         st.session_state[f"snap::{active}"] = _snap_w
@@ -241,22 +278,27 @@ with tab_px:
 
     cov = []
     for i in pf["ISIN"]:
-        t = ticker_of.get(i, "")
+        t = risk_of.get(i, "")                 # risk / correlation series (RiskProxy ∨ Ticker)
+        hld = ticker_of.get(i, "")             # held listing (valuation)
+        held_cell = hld if (hld and hld != t) else ""
         if t in priced:
             s = panel[t].dropna()
             yrs = round((s.index[-1] - s.index[0]).days / 365.25, 1)
             cov.append({
-                "Name": name_of[i], "Ticker": t, "Priced": "✓",
+                "Name": name_of[i], "Risk series": t, "Held": held_cell, "Priced": "✓",
                 "Ccy": _ccy_label(t),
                 "Source": srcs.get(t, "?") + (" ·cached" if t in cached else ""),
                 "From": str(s.index[0].date()), "Points": int(len(s)),
                 "Years": yrs, "Flag": "⚠ short" if yrs < MIN_HISTORY_YEARS else "",
             })
         else:
-            cov.append({"Name": name_of[i], "Ticker": t, "Priced": "✗",
+            cov.append({"Name": name_of[i], "Risk series": t, "Held": held_cell, "Priced": "✗",
                         "Ccy": "—", "Source": "—", "From": "—", "Points": 0,
                         "Years": 0.0, "Flag": ""})
-    st.markdown("**Data coverage** — check each proxy actually pulls and has enough history.")
+    st.markdown(
+        "**Data coverage** — the series feeding correlation/risk (RiskProxy, else "
+        "Ticker). **Held** shows the valuation listing when it differs."
+    )
     st.dataframe(pd.DataFrame(cov), width="stretch", hide_index=True)
     st.caption(
         f"⚠ marks under {MIN_HISTORY_YEARS:g}y history — too short for stable covariance; "
@@ -287,7 +329,7 @@ with tab_px:
             "for: " + ", ".join(guessed) + ". Converted as USD→EUR — verify, or pin "
             "it in `registry.PRICE_TICKER_CCY`."
         )
-    unpriced = sorted({c["Ticker"] for c in cov if c["Priced"] == "✗" and c["Ticker"]})
+    unpriced = sorted({c["Risk series"] for c in cov if c["Priced"] == "✗" and c["Risk series"]})
     if unpriced:
         st.warning(
             "No data for: " + ", ".join(unpriced)
@@ -297,10 +339,10 @@ with tab_px:
     st.divider()
     pick = st.multiselect(
         "Chart", list(pf["ISIN"]), default=list(pf["ISIN"]),
-        format_func=lambda i: f"{name_of.get(i, i)} ({ticker_of.get(i, '')})",
+        format_func=lambda i: f"{name_of.get(i, i)} ({risk_of.get(i, '')})",
         key=f"pxpick::{active}",
     )
-    cols = [ticker_of[i] for i in pick if ticker_of.get(i) in priced]
+    cols = [risk_of[i] for i in pick if risk_of.get(i) in priced]
     sub = panel[cols] if cols else pd.DataFrame()
     if sub.empty:
         st.info("No price data to chart.")
@@ -321,8 +363,8 @@ with tab_corr:
         st.info("Need at least two priced instruments. Fix tickers in the sidebar.")
     else:
         priced = list(panel.columns)
-        missing = [(name_of[i], ticker_of[i]) for i in pf["ISIN"]
-                   if ticker_of.get(i) and ticker_of[i] not in priced]
+        missing = [(name_of[i], risk_of[i]) for i in pf["ISIN"]
+                   if risk_of.get(i) and risk_of[i] not in priced]
         if missing:
             st.warning("Excluded (no price data): "
                        + ", ".join(f"{n} ({t})" for n, t in missing))
@@ -334,7 +376,7 @@ with tab_corr:
             )
         if len(rets) < 20:
             st.warning(f"Only {len(rets)} overlapping observations — correlation unreliable.")
-        lab = {ticker_of[i]: name_of.get(i, i) for i in pf["ISIN"] if ticker_of.get(i)}
+        lab = {risk_of[i]: name_of.get(i, i) for i in pf["ISIN"] if risk_of.get(i)}
         corr = rets.corr().rename(index=lab, columns=lab)
         fig = px.imshow(
             corr, text_auto=".2f", color_continuous_scale="RdBu_r",
@@ -656,24 +698,40 @@ with tab_risk:
         for s in rsel:
             dfp = store.load_portfolio(s)
             rrows[s] = dfp.to_dict("records") if dfp is not None else []
+        # Covariance series come from the risk proxy (fallback Ticker); valuation and
+        # weights come from the held Ticker — the two-ticker split.
         rtks = tuple({
+            store.risk_ticker(r)
+            for rs in rrows.values() for r in rs if store.risk_ticker(r)
+        })
+        rpanel = cached_panel(rtks, period) if rtks else pd.DataFrame()
+        rpanel = prices.to_frequency(rpanel, freq)  # returns use chosen freq
+        rhold = tuple({
             str(r.get("Ticker", "")).strip()
             for rs in rrows.values() for r in rs if str(r.get("Ticker", "")).strip()
         })
-        rpanel = cached_panel(rtks, period) if rtks else pd.DataFrame()
-        rlast = rpanel.ffill().iloc[-1].to_dict() if not rpanel.empty else {}
-        rpanel = prices.to_frequency(rpanel, freq)  # returns use chosen freq; rlast stays daily
-        vol = {s: overlap.portfolio_volume(rrows[s], rm, rlast) for s in rsel}
+        rhold_panel = cached_panel(rhold, period) if rhold else pd.DataFrame()
+        rlast = rhold_panel.ffill().iloc[-1].to_dict() if not rhold_panel.empty else {}
+        # Portfolio size for combining books: market value (tracked) or the explicit
+        # per-book notional (research) — the SAME basis the Allocation tab uses, so
+        # core/satellite risk attribution respects intended research sizes.
+        if rm == "research":
+            vol = {s: store.notional_of(idx, s, 1.0) for s in rsel}
+        else:
+            vol = {s: overlap.portfolio_volume(rrows[s], rm, rlast) for s in rsel}
         tvol = sum(vol.values())
 
         if tvol <= 0 or rpanel.empty:
             st.info("Need priced holdings (and Units in tracked mode) to measure risk.")
         else:
-            tick_w, tick_sleeve, tick_name = {}, {}, {}
+            # tick_w aggregates weight by RISK proxy (the covariance key). tick_hold
+            # keeps each proxy's underlying holdings + weights so proxy-level risk can
+            # be split back to real holdings (several holdings may share one proxy).
+            tick_w, tick_sleeve, tick_name, tick_hold = {}, {}, {}, {}
             for s in rsel:
                 vshare = vol[s] / tvol
                 eff = overlap.effective_weights(rrows[s], rm, rlast)
-                tk = {r["ISIN"]: str(r.get("Ticker", "")).strip() for r in rrows[s]}
+                tk = {r["ISIN"]: store.risk_ticker(r) for r in rrows[s]}  # covariance key
                 nn = {r["ISIN"]: (r.get("Name") or r["ISIN"]) for r in rrows[s]}
                 nm = name_by_slug.get(s, s)
                 for isin, w in eff.items():
@@ -684,6 +742,9 @@ with tab_risk:
                     tick_sleeve.setdefault(t, {})
                     tick_sleeve[t][nm] = tick_sleeve[t].get(nm, 0.0) + cw
                     tick_name.setdefault(t, nn.get(isin, t))
+                    hname = nn.get(isin, isin)
+                    tick_hold.setdefault(t, {})
+                    tick_hold[t][hname] = tick_hold[t].get(hname, 0.0) + cw
 
             # Honest coverage: positioned holdings vs those we could actually price.
             # (effective_weights drops unpriced holdings in tracked mode, so dec's
@@ -700,7 +761,7 @@ with tab_risk:
                         continue
                     seen.add(isin)
                     positioned.append(isin)
-                    t = str(r.get("Ticker", "")).strip()
+                    t = store.risk_ticker(r)  # priced if its risk series is in the panel
                     if not t or t not in priced_cols:
                         excluded.append(r.get("Name") or isin)
             n_tot = len(positioned)
@@ -804,20 +865,50 @@ with tab_risk:
                                  width="stretch", hide_index=True)
 
                 st.markdown("**Risk contribution by holding** (share of total portfolio risk).")
-                hdf = pd.DataFrame([
-                    {"Holding": tick_name.get(t, t), "Ticker": t,
-                     "Weight %": round(dec["w"][t] * 100, 1),
-                     "Risk %": round(dec["rc_frac"][t] * 100, 1),
-                     "Standalone volatility": f"{dec['standalone'][t]:.0%}"}
-                    for t in dec["tickers"]
-                ]).sort_values("Risk %", ascending=False)
+                # Split each risk proxy's weight / risk contribution back to its
+                # underlying holdings in proportion to their weight on that proxy, so
+                # two holdings sharing a proxy each get an honest row (not one swallowed).
+                hrows = []
+                shared = False  # any proxy carrying more than one holding?
+                for t in dec["tickers"]:
+                    members = tick_hold.get(t, {tick_name.get(t, t): tick_w.get(t, 0.0)})
+                    if len(members) > 1:
+                        shared = True
+                    tw = tick_w.get(t, 0.0)
+                    for hname, cw in members.items():
+                        frac = (cw / tw) if tw else 0.0
+                        hrows.append({
+                            "Holding": hname, "Risk proxy": t,
+                            "Weight %": round(dec["w"][t] * frac * 100, 1),
+                            "Risk %": round(dec["rc_frac"][t] * frac * 100, 1),
+                            "Standalone volatility": f"{dec['standalone'][t]:.0%}",
+                        })
+                hdf = pd.DataFrame(hrows).sort_values("Risk %", ascending=False)
                 fig = px.bar(hdf.head(20), x="Risk %", y="Holding", orientation="h")
                 fig.update_layout(height=max(240, 26 * min(len(hdf), 20)),
                                   yaxis=dict(autorange="reversed"),
                                   margin=dict(l=0, r=0, t=10, b=0),
                                   yaxis_title="", xaxis_title="% of total risk")
                 st.plotly_chart(fig, width="stretch")
-                st.dataframe(hdf, width="stretch", hide_index=True)
+                _shared_help = (
+                    "The covariance series used for this holding. When several holdings "
+                    "share one Risk proxy they ride the *same* return series — correlation "
+                    "1 and identical volatility by construction — so their combined risk is "
+                    "split back by capital weight, not estimated independently."
+                )
+                st.dataframe(
+                    hdf, width="stretch", hide_index=True,
+                    column_config={
+                        "Risk proxy": st.column_config.TextColumn("Risk proxy", help=_shared_help),
+                    },
+                )
+                if shared:
+                    st.caption(
+                        "⚠ Some holdings share a **Risk proxy** (same row value): the model "
+                        "treats them as one return series (perfectly correlated), and their "
+                        "risk is split by capital weight — not an independent per-holding "
+                        "estimate. Give each its own ticker/proxy to distinguish them."
+                    )
 
                 st.markdown(
                     "**Rolling annualized volatility** — how the single number above "

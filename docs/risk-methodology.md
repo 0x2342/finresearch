@@ -22,6 +22,11 @@ We model returns rather than price levels because prices trend and live on
 incomparable scales, whereas returns are (approximately) stationary and
 scale-free, so they can be pooled statistically and compared across instruments.
 
+The price series for covariance/correlation is each holding's **`RiskProxy`** (a
+long-history index tracker) when set, otherwise its `Ticker`; this is independent
+of the held listing used for valuation, so a short-history wrapper never shortens
+the risk window (see README, "Two tickers per holding").
+
 > **Code.** `rets = panel[tickers].pct_change().dropna(how="any")` — pandas
 > `pct_change` is exactly $P_t/P_{t-1}-1$. The `dropna(how="any")` inner-joins
 > the series, so the usable window is the **intersection** of all histories.
@@ -169,6 +174,18 @@ position that hedges the book can even have **negative** risk contribution.
 > `rc_frac[t] = rc_i / sigma` is the percentage contribution. In the Risk tab the
 > *Risk %* column is `rc_frac` and sums to 100%.
 
+**Index $i$ is a risk proxy, not a holding.** The covariance runs on each holding's
+`RiskProxy` (§1.1), so $\Sigma$ and the $\text{RC}_i$ above are indexed by *proxy*,
+not by holding. When two holdings share one proxy their weights are summed onto that
+proxy for the covariance (correct — they ride the *same* return series, so the model
+treats them as one asset: correlation 1, identical standalone volatility). The
+*Risk contribution by holding* table then splits that proxy's $\text{RC}$ back across
+its holdings **in proportion to their capital weight** on it ($\text{RC}_i \cdot
+w^{\text{hold}}/w^{\text{proxy}}$). This is a presentation of shared risk by weight,
+not an independent per-holding estimate — the proxy approach cannot distinguish two
+holdings that use the same series. The UI flags this when it occurs; give each
+holding its own ticker/proxy to separate them.
+
 ---
 
 ## 5. Diversification ratio
@@ -202,8 +219,11 @@ $$ w^{(P)}_i =
 
 ### 6.2 Combining portfolios
 
-Each portfolio $P$ has a **volume** $V_P$ (`overlap.portfolio_volume`):
-$V_P=\sum_i u_i p_i$ for tracked, $V_P=\sum_i \text{weight}_i$ for research. Its
+Each portfolio $P$ has a **volume** $V_P$ (its size for combining books):
+$V_P=\sum_i u_i p_i$ (market value, `overlap.portfolio_volume`) for **tracked**;
+for **research** an explicit per-book **notional** $N_P$ (`store.notional_of`),
+because research weights are normalised to sum to 1 and so can't size books
+against each other. Both the Allocation and Risk tabs use this same basis. Its
 **volume share** of the combined book is $s_P = V_P / \sum_Q V_Q$, and a holding
 $i$ belonging to sleeve $P$ receives combined weight
 

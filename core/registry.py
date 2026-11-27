@@ -31,7 +31,9 @@ class Instrument:
     index: str                # benchmark the HELD fund tracks
     replication: str          # 'physical' | 'swap'
     currency: str
-    price_ticker: str         # EUR listing for the correlation series
+    price_ticker: str         # EUR listing for the correlation series (the RISK PROXY)
+    holding_ticker: str | None = None  # actual held listing, when known (else unknown →
+                                       # the user enters it; never defaulted to the proxy)
     holdings_url: str | None = None   # explicit override; else built from product_id
     product_id: int | None = None     # iShares physical reference fund product id
     site: str = "uk-ishares"          # get-product-data targetSite
