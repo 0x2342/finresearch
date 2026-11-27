@@ -112,11 +112,17 @@ with st.sidebar:
         if st.button("Rename active") and nm.strip():
             store.rename(active, nm)
             st.rerun()
-        if len(slugs) > 1 and st.button("Delete active"):
-            store.delete_portfolio(active)
-            for k in [k for k in st.session_state if "::" in k]:
-                st.session_state.pop(k, None)
-            st.rerun()
+        if len(slugs) > 1:
+            confirm_del = st.checkbox(
+                f"Confirm delete “{name_by_slug.get(active, active)}”", key="confirm_del",
+                help="Deletion is permanent — tick to enable the button.",
+            )
+            if st.button("Delete active", disabled=not confirm_del):
+                store.delete_portfolio(active)
+                for k in [k for k in st.session_state if "::" in k]:
+                    st.session_state.pop(k, None)
+                st.session_state.pop("confirm_del", None)
+                st.rerun()
 
     period = st.selectbox("Price history", ["1y", "2y", "5y", "10y"], index=2)
     freq_label = st.selectbox(
@@ -128,7 +134,15 @@ with st.sidebar:
     freq = "weekly" if freq_label.startswith("Weekly") else "daily"
 
     # Editor seeded once per slug; its own widget key carries edits across reruns.
+    # When the active portfolio changes, drop the stale seed/editor/snapshot so the
+    # editor reloads from disk — otherwise a once-set seed re-renders old data and
+    # overwrites saved edits on the next save (e.g. a RiskProxy added after the first
+    # view would be lost when returning to the portfolio).
     seed_key = f"seed::{active}"
+    if st.session_state.get("_seeded_active") != active:
+        for _k in (seed_key, f"editor::{active}", f"snap::{active}"):
+            st.session_state.pop(_k, None)
+        st.session_state["_seeded_active"] = active
     if seed_key not in st.session_state:
         df0 = store.load_portfolio(active)
         st.session_state[seed_key] = EMPTY.copy() if (df0 is None or df0.empty) else df0
