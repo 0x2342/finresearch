@@ -342,13 +342,26 @@ with tab_px:
         format_func=lambda i: f"{name_of.get(i, i)} ({risk_of.get(i, '')})",
         key=f"pxpick::{active}",
     )
+    scale = st.radio(
+        "Scale", ["Price (EUR)", "Rebased to 100"], horizontal=True, key=f"pxscale::{active}",
+        help="Price shows the actual adjusted close (EUR after currency normalisation) "
+             "— compare it to your provider's EOD price. Rebased divides each series by "
+             "its own start value, so different price levels are comparable on one axis "
+             "(100 = start, 600 = grew 6×).",
+    )
     cols = [risk_of[i] for i in pick if risk_of.get(i) in priced]
     sub = panel[cols] if cols else pd.DataFrame()
     if sub.empty:
         st.info("No price data to chart.")
-    else:
+    elif scale == "Rebased to 100":
         st.line_chart(sub / sub.ffill().iloc[0] * 100.0, height=420)
-        st.caption("Rebased to 100 at series start (adjusted close).")
+        st.caption("Rebased to 100 at series start — a growth index (600 = grew 6×), "
+                   "not a price. Use **Price (EUR)** to verify actual levels.")
+    else:
+        st.line_chart(sub, height=420)
+        st.caption("Adjusted close in **EUR** (after currency normalisation). Non-EUR "
+                   "listings are converted, so they won't match the provider's native-"
+                   "currency quote; EUR listings should match.")
 
 # --------------------------------------------------------------------------- #
 # Correlation (mode-independent: pairwise on returns)
