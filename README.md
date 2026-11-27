@@ -15,6 +15,24 @@ streamlit run app.py
 
 Opens on http://localhost:8501.
 
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+A pure-Python, offline pytest suite (`tests/`) pins the core logic — risk
+decomposition, FX resolution/conversion, overlap and per-mode effective weights,
+portfolio persistence + the two-ticker model, look-through accumulation, provider
+tiers, price freshness, and the seeded-vector transcription invariants. A handful of
+`strict` xfail specs capture known findings from the latest review as executable
+TODOs (they flip to green when fixed); see `docs/backlog.md`.
+
+> **Note:** look-through fetches any holdings URL you paste, server-side and
+> uncapped. That's fine for local single-user use, but review it before exposing the
+> app on a LAN (see backlog #15/#16).
+
 ## Portfolios & persistence
 
 Multiple named portfolios, each with a **weight mode**:

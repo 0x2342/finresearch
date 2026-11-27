@@ -3,11 +3,14 @@
 Deferred work, roughly by priority. The data-quality / risk-engine items came out
 of an external code review and are correctness issues, not just enhancements.
 
-**Status (2026-11-27).** All six external review rounds are closed on correctness
-— every P1 item is ✅, including R3.1 (the two-ticker model, merged `a143a05`) and
-round-6's tracked-coverage / stale-price / ISIN-attribution fixes (`65ac3d1`), plus
-round-7's absolute price-freshness check. What remains open is **optional /
-future** only (below).
+**Status (2026-11-27).** All seven correctness-focused review rounds are closed
+— every P1 item is ✅, including R3.1 (the two-ticker model, merged `a143a05`),
+round-6's tracked-coverage / stale-price / ISIN-attribution fixes (`65ac3d1`), and
+round-7's absolute price-freshness check (`7d93b10`). A committed `tests/` pytest
+suite now pins that behaviour (76 tests). A round-8 review by a second reviewer
+(robustness / ops / security focus) is triaged below: four correctness findings are
+captured as `strict` xfail specs in the suite (executable TODOs), the rest are
+optional / future.
 
 ## Open — optional / future
 
@@ -17,15 +20,73 @@ future** only (below).
   carry forward* (current) / *exclude stale from valuation* / *require manual
   confirmation*. Thresholds ideally per-market/calendar rather than one global
   number.
-- **Automated regression test suite.** The review scenarios (missing valuation
-  price, stale series, same-name distinct ISINs, two-ticker wiring, research
-  notionals in Risk, shared-proxy split) are covered by ad-hoc AppTest scripts run
-  during development but not committed. Add a `tests/` pytest suite so they run in
-  CI and guard against regressions.
+- **Automated regression test suite.** ✅ **Done.** Committed `tests/` pytest
+  suite (76 passing + 4 `strict` xfail specs) covering risk decomposition, FX
+  resolution/conversion, overlap + per-mode effective weights, store persistence +
+  two-ticker model, look-through accumulation, provider tiers, price freshness, and
+  the seeded-vector transcription invariants. Pure/offline (no network). Run with
+  `pip install -r requirements-dev.txt && pytest`. The four xfails are the round-8
+  correctness findings below, captured as executable specs that flip to green when
+  fixed.
 - Acc-share-class proxy swap (noted under EUR/total-return), the historical
   stress-test stretch goal, the optional simple↔log return toggle, the iShares
   resolver catalog, and the Analytics items (constituent-level correlation,
   optimisation, auto-refresh).
+
+## Round-8 review (2026-11-27) — robustness / ops (second reviewer)
+
+A different reviewer, robustness/security-focused (complements the quant rounds).
+Verified in-code; the four correctness items are pinned as `strict` xfail specs in
+the test suite. None change the risk maths — they're silent-failure and ops gaps.
+
+### Correctness — captured as xfail specs (flip to green on fix)
+- **#7 Duplicate ISINs collapse.** All row→value dicts (`effective_weights`,
+  look-through, `resolve_all`) are ISIN-keyed, so a second row with the same ISIN
+  overwrites the first — valuation/weights/risk silently lose it. *Recommended fix:
+  aggregate duplicate-ISIN lots (sum Units / Weight) rather than warn-and-drop —
+  multiple purchase lots of one security is a real tracked-book case.* Spec:
+  `test_overlap.py::test_duplicate_isin_lots_aggregate_tracked`.
+- **#8 `fx.to_eur` truncates history.** When the FX cross starts later than the
+  price series, the pre-FX rows go NaN and are dropped, silently shortening the
+  converted series — which then binds the whole covariance window. *Fix: flag the
+  truncation (`attrs`) like we flag staleness.* Spec:
+  `test_fx.py::test_to_eur_short_fx_does_not_silently_truncate`.
+- **#9 `last_prices` assumes a sorted index.** Reads `panel.index[-1]` for the
+  newest obs / `data_age`; an unsorted panel breaks both. *Fix: one `sort_index()`
+  guard.* Spec: `test_prices.py::test_last_prices_handles_unsorted_index`.
+- **#18 Resolver note blank when `name` tier has no URL.** `resolve(..., "name",
+  None)` returns `note=None` → blank provenance Note. *Fix: `note="no source URL
+  configured"`.* Spec: `test_providers.py::test_name_tier_without_url_explains_itself`.
+
+### Robustness / ops — open, pending triage
+- **#11 Silent write failures.** `save_portfolio` / `save_sources` / `prices._save`
+  swallow all exceptions, so a full disk / permission error looks like a successful
+  auto-save. Surface a session-level "save failed" flag. *(Recommended before a live
+  tracked book.)*
+- **#10 Cache has no TTL.** Every cold `get_panel` refetches yfinance even on a
+  minutes-old cache; the only refresh control is a nuclear `clear()`. Add a `max_age`
+  (serve-if-fresh / refetch-if-stale) so the "Refresh prices" button means something.
+- **#15 / #16 Server-side fetch of user URLs.** `holdings._read_text` GETs any pasted
+  URL with no size cap (SSRF + unbounded-memory surface). Fine for local single-user;
+  **note in README before any LAN exposure**, add a response-size cap, and consider
+  blocking private-IP targets.
+- **#12 `_ccy.json` read-modify-write race.** Concurrent Streamlit reruns can lose a
+  cache entry; use an `os.replace` atomic write (applies to `_write_index` too).
+- **#17 429 treated as final.** `_read_text` breaks on any `<500`; give 429 one
+  retry with a longer backoff.
+- **#19 Post-delete session cleanup too broad.** The `"::" in k` filter nukes all
+  namespaced widget state, not just the deleted portfolio's. Scope to the active slug.
+- **#20 `exposures.vectors()` silent default.** Returns COUNTRIES for any non-"Sector"
+  string; a typo'd dimension behaves wrongly. Internal constants only, but cheap to
+  harden.
+- **#13 Weekly `max_stale` comment.** The 5-row cap is trading rows (applied pre-
+  resample); docstring reads "weeks". Semantically fine — clarify the comment.
+
+### Nits
+- **#22** `overlap.portfolio_volume` research branch is vestigial (documented) —
+  delete it / return `0.0` explicitly so callers can't misuse it.
+- **#23** `app.py` is a 900+-line monolith; tab bodies would be happier as a `ui/`
+  module. Not urgent for a prototype (overlaps the general refactor).
 
 ## Round-3 review (2026-11-26) — data-model correctness
 
