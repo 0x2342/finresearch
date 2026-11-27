@@ -154,6 +154,32 @@ def to_frequency(panel: pd.DataFrame, freq: str = "daily", max_stale: int = 5) -
     return panel
 
 
+def last_prices(panel, max_stale_days: int = 7) -> tuple[dict, dict]:
+    """Latest valid close per ticker for valuation, plus which are stale.
+
+    Returns ``(prices, stale)``: `prices` maps ticker → last valid close; `stale`
+    maps ticker → calendar days since that close, for any ticker whose last
+    observation is older than `max_stale_days` (a delisted / halted / thin listing
+    whose price would otherwise be carried forward indefinitely). Valuation still
+    uses the last known price, but the UI can flag the stale ones rather than
+    silently distorting market value and weights.
+    """
+    prices_out: dict[str, float] = {}
+    stale: dict[str, int] = {}
+    if panel is None or getattr(panel, "empty", True):
+        return prices_out, stale
+    end = panel.index[-1]
+    for c in panel.columns:
+        s = panel[c].dropna()
+        if s.empty:
+            continue
+        prices_out[c] = float(s.iloc[-1])
+        age = (end - s.index[-1]).days
+        if age > max_stale_days:
+            stale[c] = age
+    return prices_out, stale
+
+
 def _currency_meta(ticker: str) -> str | None:
     """Quote currency from yfinance `fast_info`, memoised to a JSON sidecar.
 

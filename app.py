@@ -231,9 +231,9 @@ risk_tickers = tuple(dict.fromkeys(t for t in risk_of.values() if t))
 panel = cached_panel(risk_tickers, period) if risk_tickers else pd.DataFrame()
 hold_tickers = tuple(dict.fromkeys(t for t in ticker_of.values() if t))
 hold_panel = cached_panel(hold_tickers, period) if hold_tickers else pd.DataFrame()
-last = hold_panel.ffill().iloc[-1] if not hold_panel.empty else pd.Series(dtype=float)
+last, last_stale = prices.last_prices(hold_panel)  # valuation prices + stale flags
 
-weights = overlap.effective_weights(pf.to_dict("records"), mode, last.to_dict())
+weights = overlap.effective_weights(pf.to_dict("records"), mode, last)
 
 # Tracked books: Weight is DERIVED (Units × price, normalised %), not entered. Persist
 # the computed value so the column is populated and a Duplicate → research copy inherits
@@ -541,7 +541,7 @@ with tab_value:
     for _, r in pf.iterrows():
         t = str(r["Ticker"]).strip()
         units = _f(r.get("Units"))
-        price = float(last.get(t)) if t in getattr(last, "index", []) else None
+        price = float(last.get(t)) if t in last else None
         value = units * price if (price is not None and units) else None
         if value:
             total += value
@@ -549,11 +549,19 @@ with tab_value:
             {
                 "Name": r["Name"], "Ticker": t, "Units": units,
                 "Last": round(price, 2) if price is not None else None,
+                "Stale": f"⚠ {last_stale[t]}d" if t in last_stale else "",
                 "Value (EUR)": round(value, 2) if value is not None else None,
             }
         )
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     st.metric("Portfolio value (priced units)", f"€ {total:,.2f}")
+    _vstale = sorted(t for t in last_stale if any(str(r["Ticker"]).strip() == t for _, r in pf.iterrows()))
+    if _vstale:
+        st.warning(
+            "Stale valuation price (last close older than a week) for: "
+            + ", ".join(f"{t} ({last_stale[t]}d)" for t in _vstale)
+            + " — market value and weights use a carried-forward price. Check the listing."
+        )
     st.caption("Enter Units per holding to value from live prices. Manual refresh only.")
 
 # --------------------------------------------------------------------------- #
@@ -603,7 +611,7 @@ with tab_alloc:
                     if str(r.get("Ticker", "")).strip()
                 })
                 pan = cached_panel(tks, period) if tks else pd.DataFrame()
-                lastd = (pan.ffill().iloc[-1].to_dict() if not pan.empty else {})
+                lastd, _ = prices.last_prices(pan)
 
             if m == "research":
                 # Research weights only set allocation *within* a book and sum to 1,
@@ -724,7 +732,7 @@ with tab_risk:
             for rs in rrows.values() for r in rs if str(r.get("Ticker", "")).strip()
         })
         rhold_panel = cached_panel(rhold, period) if rhold else pd.DataFrame()
-        rlast = rhold_panel.ffill().iloc[-1].to_dict() if not rhold_panel.empty else {}
+        rlast, rlast_stale = prices.last_prices(rhold_panel)
         # Portfolio size for combining books: market value (tracked) or the explicit
         # per-book notional (research) — the SAME basis the Allocation tab uses, so
         # core/satellite risk attribution respects intended research sizes.
@@ -740,7 +748,7 @@ with tab_risk:
             # tick_w aggregates weight by RISK proxy (the covariance key). tick_hold
             # keeps each proxy's underlying holdings + weights so proxy-level risk can
             # be split back to real holdings (several holdings may share one proxy).
-            tick_w, tick_sleeve, tick_name, tick_hold = {}, {}, {}, {}
+            tick_w, tick_sleeve, tick_name, tick_hold, hold_name = {}, {}, {}, {}, {}
             for s in rsel:
                 vshare = vol[s] / tvol
                 eff = overlap.effective_weights(rrows[s], rm, rlast)
@@ -755,15 +763,17 @@ with tab_risk:
                     tick_sleeve.setdefault(t, {})
                     tick_sleeve[t][nm] = tick_sleeve[t].get(nm, 0.0) + cw
                     tick_name.setdefault(t, nn.get(isin, t))
-                    hname = nn.get(isin, isin)
-                    tick_hold.setdefault(t, {})
-                    tick_hold[t][hname] = tick_hold[t].get(hname, 0.0) + cw
+                    tick_hold.setdefault(t, {})            # keyed by ISIN so same-name
+                    tick_hold[t][isin] = tick_hold[t].get(isin, 0.0) + cw   # holdings stay distinct
+                    hold_name[isin] = nn.get(isin, isin)
 
-            # Honest coverage: positioned holdings vs those we could actually price.
-            # (effective_weights drops unpriced holdings in tracked mode, so dec's
-            # weight `covered` reads ~100% — count the full book here instead.)
-            priced_cols = set(rpanel.columns)
-            positioned, excluded, seen = [], [], set()
+            # Honest coverage: positioned holdings vs those we could actually use.
+            # A holding needs its RISK series (covariance) priced; in TRACKED mode it
+            # also needs its HELD listing priced, or it can't be valued/weighted and
+            # effective_weights drops it. Report the two exclusion reasons separately.
+            priced_cols = set(rpanel.columns)   # risk series available
+            hold_priced = set(rlast)            # valuation prices available (held tickers)
+            positioned, excl_risk, excl_val, seen = [], [], [], set()
             for s in rsel:
                 for r in rrows[s]:
                     isin = r["ISIN"]
@@ -774,11 +784,15 @@ with tab_risk:
                         continue
                     seen.add(isin)
                     positioned.append(isin)
-                    t = store.risk_ticker(r)  # priced if its risk series is in the panel
-                    if not t or t not in priced_cols:
-                        excluded.append(r.get("Name") or isin)
+                    nm = r.get("Name") or isin
+                    rt = store.risk_ticker(r)
+                    ht = str(r.get("Ticker", "")).strip()
+                    if not rt or rt not in priced_cols:
+                        excl_risk.append(nm)                       # no risk-series history
+                    elif rm == "tracked" and (not ht or ht not in hold_priced):
+                        excl_val.append(nm)                        # priced for risk, can't be valued
             n_tot = len(positioned)
-            n_priced = n_tot - len(excluded)
+            n_priced = n_tot - len(excl_risk) - len(excl_val)
 
             dec = risk.decompose(rpanel, tick_w, periods_per_year=FREQ_PERIODS[freq])
             if dec is None:
@@ -809,12 +823,29 @@ with tab_risk:
                     "shortest-history ticker; correlations rise toward 1 in a crash, so "
                     "realised drawdown risk can exceed this."
                 )
-                if excluded:
+                if excl_risk:
                     st.warning(
-                        f"{len(excluded)} positioned holding(s) excluded — no price: "
-                        + ", ".join(sorted(set(excluded)))
-                        + f". Volatility and € figures cover the {n_priced} priced holding(s) only."
+                        f"{len(excl_risk)} holding(s) excluded — **no risk-series history** "
+                        "(RiskProxy/Ticker didn't price): " + ", ".join(sorted(set(excl_risk)))
+                        + ". Volatility covers the priced holdings only."
                     )
+                if excl_val:
+                    st.warning(
+                        f"{len(excl_val)} holding(s) excluded — **no valuation price** (tracked): "
+                        + ", ".join(sorted(set(excl_val)))
+                        + ". Their risk series prices, but the held listing doesn't, so they "
+                        "can't be weighted by market value."
+                    )
+                if tracked and rlast_stale:
+                    _rs = sorted(t for t in rlast_stale
+                                 if any(str(r.get("Ticker", "")).strip() == t
+                                        for s in rsel for r in rrows[s]))
+                    if _rs:
+                        st.caption(
+                            "⚠ Stale valuation price (>1 week old) for: "
+                            + ", ".join(f"{t} ({rlast_stale[t]}d)" for t in _rs)
+                            + " — tracked weights use a carried-forward price."
+                        )
                 # Why is the window short? Identify any late-listing holding that
                 # caps the common window, and separate that from frequency × a short
                 # price-history period (few observations by construction).
@@ -884,14 +915,14 @@ with tab_risk:
                 hrows = []
                 shared = False  # any proxy carrying more than one holding?
                 for t in dec["tickers"]:
-                    members = tick_hold.get(t, {tick_name.get(t, t): tick_w.get(t, 0.0)})
+                    members = tick_hold.get(t, {None: tick_w.get(t, 0.0)})  # ISIN → weight
                     if len(members) > 1:
                         shared = True
                     tw = tick_w.get(t, 0.0)
-                    for hname, cw in members.items():
+                    for isin_k, cw in members.items():
                         frac = (cw / tw) if tw else 0.0
                         hrows.append({
-                            "Holding": hname, "Risk proxy": t,
+                            "Holding": hold_name.get(isin_k, tick_name.get(t, t)), "Risk proxy": t,
                             "Weight %": round(dec["w"][t] * frac * 100, 1),
                             "Risk %": round(dec["rc_frac"][t] * frac * 100, 1),
                             "Standalone volatility": f"{dec['standalone'][t]:.0%}",

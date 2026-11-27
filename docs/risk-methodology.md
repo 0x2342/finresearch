@@ -274,6 +274,12 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   therefore reports coverage by **holding count** (priced $K$ of $N$) and lists
   any excluded holdings, so a missing position is never hidden behind a 100%
   figure. The reported volatility then honestly describes the priced subset.
+  With the two-ticker model a holding is "priced" only when the series it needs
+  actually resolve: the **RiskProxy** (covariance) always, and in **tracked** mode
+  the held **Ticker** too (no valuation price → no $u_i p_i$ → dropped). The count
+  therefore reports the two exclusion reasons separately — *no risk-series history*
+  vs *no valuation price (tracked)* — since they are different problems. A
+  carried-forward (stale) valuation price is flagged rather than silently used.
   Two coverage numbers matter: **count** (priced $K$ of $N$ holdings, shown in
   both modes) and **value** (share of portfolio weight priced). In **research**
   mode the value figure is exactly `covered` and is shown ("Value covered", e.g.
