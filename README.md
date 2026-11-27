@@ -172,7 +172,7 @@ look-through provenance as `… ref: MSCI Emerging Markets IMI (approx.)`.
 
 ### Bond sleeve proxies
 
-Decision: keep the bond proxies as close to exact as possible (matched index
+Design decision: keep the bond proxies as close to exact as possible (matched index
 variant where one exists, hedge always preserved) and accept short history — the
 coverage panel flags anything under 3y with ⚠. Never substitute an unhedged
 tracker for a hedged one: the FX leg would dominate and wreck the correlation.
