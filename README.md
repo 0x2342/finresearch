@@ -47,9 +47,10 @@ Correlation is mode-independent (pairwise by nature). The look-through overlap
 (pairwise matrix, portfolio aggregate, A/B compare) uses the active portfolio's
 effective weights.
 
-Switch/create/duplicate/rename/delete portfolios in the sidebar. Everything
-auto-saves to `data/portfolios/<slug>.csv` with a small `index.json`; plain CSV,
-so hand-edit if you like. On first run the registry seeds a "Core" research
+Switch/create/duplicate/rename/delete portfolios in the sidebar (delete needs an
+explicit confirm tick that re-arms after each use). Everything auto-saves to
+`data/portfolios/<slug>.csv` with a small `index.json`; plain CSV, so hand-edit if
+you like. On first run the registry seeds a "Core" research
 portfolio; a legacy single `data/portfolio.csv` is migrated into it automatically.
 
 ## What works where
@@ -86,15 +87,19 @@ the holiday-intersection loss, with annualization by `√52`
 instead of `√252` — prefer it for globally diversified books, keep daily as the
 secondary view. It also drives the Correlation tab. Select one portfolio for a
 single-book view or several (same weight source) to split risk **core vs
-satellite**. It shows:
+satellite** (research books are sized by their explicit **notional**, the same
+basis the Allocation tab uses; tracked books by market value). It shows:
 
 - **Annualized volatility** (%), and for tracked books the **± annual € volatility**
   (volatility × priced capital).
 - **Diversification** = portfolio volatility ÷ weighted-average standalone volatility (<1 = benefit).
 - **Risk contribution by sleeve** — capital % vs risk % (a 25%-capital satellite
   can be 40% of the risk).
-- **Risk contribution by holding** — each holding's share of total risk, which
-  sums to 100%, plus its standalone volatility.
+- **Risk contribution by holding** — each holding's share of total risk (sums to
+  100%) plus standalone volatility, keyed by its **Risk proxy** series. Where
+  several holdings share one proxy they ride the same series (correlation 1 by
+  construction), so the proxy's risk is split back across them by capital weight
+  and the UI flags it — give each its own ticker/proxy to separate them.
 
 Weights are `volatility-share × within-portfolio weight` (sleeve-tagged); the % split is
 identical for tracked and research, tracked adds the € figures. `core/risk.py`
@@ -135,12 +140,14 @@ proxy: the correlation window is the *intersection* of all series, so one short
 series truncates everything. (Before the two-ticker split, one `Ticker` did both
 jobs — a proxy there silently corrupted valuation; that's now impossible.)
 
-The **Data coverage** panel in the Prices tab shows, per holding, whether it
-priced, its **currency** (see below), its **source** (yfinance = total-return /
-dividend-adjusted; stooq = raw close, flagged), start date, point count and
-years; the Correlation tab shows the overlapping window and lists any excluded
-(unpriced) instruments. Use these to vet a proxy, then set the ticker in the
-sidebar editor (it persists).
+The **Data coverage** panel in the Prices tab shows, per holding, the **risk
+series** (the `RiskProxy`, else `Ticker`) and a **Held** column when the valuation
+listing differs, whether it priced, its **currency** (see below), its **source**
+(yfinance = total-return / dividend-adjusted; stooq = raw close, flagged;
+`·cached` when served from the on-disk cache, which keeps the original provider),
+start date, point count and years; the Correlation tab shows the overlapping
+window and lists any excluded (unpriced) instruments. Use these to vet a proxy,
+then set the ticker in the sidebar editor (it persists).
 
 **Common base currency (EUR).** A series *quoted* in USD/GBP/… is converted to
 EUR (price × FX cross) **before** any returns are taken, so an unhedged fund's FX
@@ -250,9 +257,9 @@ like Global Aggregate stays low vs equities because it genuinely is government d
 | `core/prices.py` | Price cache (yfinance → Stooq → parquet) + EUR normalisation + daily/weekly resampling |
 | `core/fx.py` | Currency normalisation: quote-currency resolution + price → EUR conversion |
 | `core/risk.py` | Volatility, Euler risk decomposition, rolling 12m/36m volatility |
-| `core/holdings.py` | Parse iShares Detailed Holdings CSV → names + aggregate sector/country |
+| `core/holdings.py` | Parse iShares holdings (JSON/CSV) → ISIN-keyed securities + issuers + sector/country + per-dimension coverage |
 | `core/providers.py` | Look-through providers + tier resolution (name-level ↔ factsheet) |
-| `core/store.py` | Portfolios, per-fund source URLs, persistence |
+| `core/store.py` | Portfolios (Ticker + RiskProxy, research notionals), per-fund source URLs, persistence |
 | `core/overlap.py` | Overlap engine (weight overlap, pairwise, portfolio aggregate) |
 | `app.py` | Streamlit UI |
 
@@ -281,11 +288,12 @@ auto-populate `INDEX_REF`.
 
 ## Next (deferred)
 
-See **[docs/backlog.md](docs/backlog.md)**. The risk-engine correctness and
-robustness items from two code reviews are **done**: EUR currency normalisation,
-honest holding-count + value coverage, total-return source flagging,
-calendar-aware weekly (Fri–Fri) returns, rolling 12m/36m volatility, and explicit
-auditable currency resolution. Still open: an actual-weights *realised*-history
+See **[docs/backlog.md](docs/backlog.md)**. All five external review rounds are
+**closed** — EUR currency normalisation, honest holding-count + value coverage,
+total-return source flagging, calendar-aware weekly (Fri–Fri) returns, rolling
+12m/36m volatility, explicit auditable currency resolution, ISIN-keyed look-through
+with coverage reporting, and the **two-ticker model** (held `Ticker` vs
+`RiskProxy`). Still open, all optional/future: an actual-weights *realised*-history
 series (needs position history) and historical stress tests (2008 / 2020 / 2022);
-the iShares product-screener catalog for the resolver; and constituent-level
-correlation / optimisation / auto-refresh.
+an optional simple↔log return toggle; the iShares product-screener catalog for the
+resolver; and constituent-level correlation / optimisation / auto-refresh.

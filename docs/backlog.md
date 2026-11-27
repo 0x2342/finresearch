@@ -3,20 +3,41 @@
 Deferred work, roughly by priority. The data-quality / risk-engine items came out
 of an external code review and are correctness issues, not just enhancements.
 
+**Status (2026-11-27).** All five external review rounds are closed — every
+correctness and data-quality item below is ✅, including R3.1 (the two-ticker
+model, merged `a143a05`). What remains open is **optional / future** only: the
+Acc-share-class proxy swap (noted under EUR/total-return), the historical
+stress-test stretch goal, the optional simple↔log return toggle, the iShares
+resolver catalog, and the Analytics items (constituent-level correlation,
+optimisation, auto-refresh).
+
 ## Round-3 review (2026-11-26) — data-model correctness
 
 Third external review (published main, code checked against docs). Every point
 below was verified in-code. Two are regressions we introduced (⚠).
 
 ### P1 — correctness
-- **R3.1 Split holding ticker from risk-proxy ticker.** One `Ticker` field serves
-  both valuation (Units × price, tracked) and the risk/correlation proxy, so a
-  long-history *index proxy* dropped into a tracked book silently corrupts market
-  value **and** the derived weights feeding risk. The model relies on discipline
-  (actual ETF in tracked; proxy only in research). Fix: separate `HoldingTicker`
-  (actual listing → units/valuation/weights) from `RiskProxyTicker` (long-history
-  index proxy → covariance/correlation). Biggest lift — schema across store,
-  overlap, app, registry, UI.
+- **R3.1 Split holding ticker from risk-proxy ticker.** ✅ **Done — merged `a143a05`**
+  (branch `feature/two-ticker-model`, kept). One `Ticker` previously served both
+  valuation (Units × price) and the risk/correlation proxy, so an index proxy in a
+  tracked book silently corrupted market value and the derived weights. Implemented
+  as **Option B**: keep `Ticker` as the held listing (valuation/weights/allocation)
+  and add an optional `RiskProxy` (covariance/correlation; blank falls back to
+  `Ticker`) — less churn than two always-on columns, backward-compatible (existing
+  CSVs migrate with a blank `RiskProxy`). `store.risk_ticker()` resolves
+  proxy∨ticker; the app fetches two panels (risk series vs held prices); Prices
+  "Data coverage" shows the risk series with a "Held" column when it differs.
+  Round-4/5 review follow-ups, all merged:
+    - registry seeds `price_ticker` into `RiskProxy`, leaves `Ticker` blank (no
+      proxy masquerading as a holding); `Instrument.holding_ticker` added for
+      known listings.
+    - Risk tab sizes research books by explicit notional (was Σ weights ≈ 1), same
+      basis as Allocation.
+    - proxy-level risk split back to holdings proportionally; the shared-proxy
+      limitation (holdings on one proxy ride the same series, ρ=1) is flagged in a
+      UI tooltip/caption and methodology §4.
+    - RiskProxy persists across portfolio switches (stale-seed overwrite fixed);
+      delete gated behind a confirm checkbox that re-arms unticked after each delete.
 - **R3.2 EM reference is the IMI index, not plain MSCI EM.** ✅ **Done — `47dc646`.** Registry maps ISIN
   IE000S3N6R34 (benchmark *MSCI Emerging Markets*) → product 264659 = iShares Core
   MSCI EM **IMI** (large+mid+small). IMI ≠ standard EM (large+mid): ~0.99-correlated
@@ -27,7 +48,7 @@ below was verified in-code. Two are regressions we introduced (⚠).
   Global Agg *Float Adjusted & Scaled*; registry points to iShares 291770 (Bloomberg
   Global Agg, not float-adjusted). Close, not identical. Fix: qualify the label as a
   proxy now; exact physical reference later.
-- **R3.4 Use ISIN, not issuer name, as the overlap key.** ✅ **Done — `042dd24`.** `holdings._accumulate`
+- **R3.4 Use ISIN, not issuer name, as the overlap key.** ✅ **Done — `292eb07`.** `holdings._accumulate`
   aggregates by the `issueName` string, so a bond ETF's distinct bonds from one
   issuer (different maturities) collapse → issuer-level, not security-level, overlap
   — wrong exactly when comparing a corp-bond ETF to the global agg. Fix: key by ISIN
@@ -35,7 +56,7 @@ below was verified in-code. Two are regressions we introduced (⚠).
   (name/LEI), sector.
 
 ### P2 — data quality
-- **R3.5 Stale-price max age for weekly sampling.** ✅ **Done — `042dd24`.** `ffill().resample("W-FRI").last()`
+- **R3.5 Stale-price max age for weekly sampling.** ✅ **Done — `292eb07`.** `ffill().resample("W-FRI").last()`
   has no age cap — a missing Friday close is filled by an arbitrarily old price with
   no staleness flag. Add a maximum observation age; reject/flag stale weekly prices.
   (Raised in round 2, deferred; now due.)
@@ -44,7 +65,7 @@ below was verified in-code. Two are regressions we introduced (⚠).
   `source="cache"` and loses whether it came from yfinance (total-return) or Stooq
   (raw) — the Stooq-unadjusted warning silently vanishes after a cache reload.
   Persist source + retrieval timestamp + adjustment + currency + period with the cache.
-- **R3.7 Report sector/country data coverage.** ✅ **Done — `042dd24`.** `_accumulate` drops unclassified
+- **R3.7 Report sector/country data coverage.** ✅ **Done — `292eb07`.** `_accumulate` drops unclassified
   holdings then normalises to 100%, hiding incomplete source data. Report
   per-dimension coverage (name / sector / country) before normalisation.
 - **R3.8 Preserve Hong Kong separately from China.** ✅ **Done — `47dc646`.** `holdings._COUNTRY` maps
@@ -163,16 +184,6 @@ remaining weakness, and added three refinements + a stretch goal. Ordered.
   log for the Correlation tab and standalone volatilities (where it's cleanly
   valid), simple kept for the portfolio decomposition (fiddlier UX: two
   conventions on one screen).
-
-- **Estimator stability / regime awareness.** ✅ **Done — `87a61f0`.** A single
-  full-window covariance blends regimes (COVID, 2022 rate shock, AI
-  concentration). Shipped: the Risk tab plots **rolling 12-month (252d) and
-  36-month (756d) annualised volatility** of the book at constant current weights,
-  over a dotted full-window σ reference. `risk.portfolio_returns` +
-  `risk.rolling_vol`; the rolling basis reconciles exactly with the headline σ
-  (full-window std = `decompose['ann_vol']`). Each window renders only once its
-  history exists; risk-methodology.md §9 documents it. The full-window estimator
-  is unchanged — this is an added lens, not a replacement.
 
 - **Estimator stability / regime awareness.** ✅ **Done — `87a61f0`.** A single
   full-window covariance blends regimes (COVID, 2022 rate shock, AI
