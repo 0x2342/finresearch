@@ -47,8 +47,11 @@ def _registry_seed() -> pd.DataFrame:
         {
             "ISIN": i.isin,
             "Name": i.name,
-            "Ticker": i.price_ticker,   # held listing default (a real ETF); user can change
-            "RiskProxy": "",            # blank → risk uses Ticker; set for a longer-history series
+            # price_ticker is the registry's RISK PROXY, not necessarily the held
+            # listing — seed it into RiskProxy and leave Ticker for the user's actual
+            # holding, so a seeded tracked book never values units on a proxy.
+            "Ticker": i.holding_ticker or "",
+            "RiskProxy": i.price_ticker,
             "Weight": registry.DEFAULT_WEIGHTS.get(i.isin, 0.0),
             "Units": 0.0,
         }
@@ -691,13 +694,22 @@ with tab_risk:
         })
         rhold_panel = cached_panel(rhold, period) if rhold else pd.DataFrame()
         rlast = rhold_panel.ffill().iloc[-1].to_dict() if not rhold_panel.empty else {}
-        vol = {s: overlap.portfolio_volume(rrows[s], rm, rlast) for s in rsel}
+        # Portfolio size for combining books: market value (tracked) or the explicit
+        # per-book notional (research) — the SAME basis the Allocation tab uses, so
+        # core/satellite risk attribution respects intended research sizes.
+        if rm == "research":
+            vol = {s: store.notional_of(idx, s, 1.0) for s in rsel}
+        else:
+            vol = {s: overlap.portfolio_volume(rrows[s], rm, rlast) for s in rsel}
         tvol = sum(vol.values())
 
         if tvol <= 0 or rpanel.empty:
             st.info("Need priced holdings (and Units in tracked mode) to measure risk.")
         else:
-            tick_w, tick_sleeve, tick_name = {}, {}, {}
+            # tick_w aggregates weight by RISK proxy (the covariance key). tick_hold
+            # keeps each proxy's underlying holdings + weights so proxy-level risk can
+            # be split back to real holdings (several holdings may share one proxy).
+            tick_w, tick_sleeve, tick_name, tick_hold = {}, {}, {}, {}
             for s in rsel:
                 vshare = vol[s] / tvol
                 eff = overlap.effective_weights(rrows[s], rm, rlast)
@@ -712,6 +724,9 @@ with tab_risk:
                     tick_sleeve.setdefault(t, {})
                     tick_sleeve[t][nm] = tick_sleeve[t].get(nm, 0.0) + cw
                     tick_name.setdefault(t, nn.get(isin, t))
+                    hname = nn.get(isin, isin)
+                    tick_hold.setdefault(t, {})
+                    tick_hold[t][hname] = tick_hold[t].get(hname, 0.0) + cw
 
             # Honest coverage: positioned holdings vs those we could actually price.
             # (effective_weights drops unpriced holdings in tracked mode, so dec's
@@ -832,13 +847,22 @@ with tab_risk:
                                  width="stretch", hide_index=True)
 
                 st.markdown("**Risk contribution by holding** (share of total portfolio risk).")
-                hdf = pd.DataFrame([
-                    {"Holding": tick_name.get(t, t), "Ticker": t,
-                     "Weight %": round(dec["w"][t] * 100, 1),
-                     "Risk %": round(dec["rc_frac"][t] * 100, 1),
-                     "Standalone volatility": f"{dec['standalone'][t]:.0%}"}
-                    for t in dec["tickers"]
-                ]).sort_values("Risk %", ascending=False)
+                # Split each risk proxy's weight / risk contribution back to its
+                # underlying holdings in proportion to their weight on that proxy, so
+                # two holdings sharing a proxy each get an honest row (not one swallowed).
+                hrows = []
+                for t in dec["tickers"]:
+                    members = tick_hold.get(t, {tick_name.get(t, t): tick_w.get(t, 0.0)})
+                    tw = tick_w.get(t, 0.0)
+                    for hname, cw in members.items():
+                        frac = (cw / tw) if tw else 0.0
+                        hrows.append({
+                            "Holding": hname, "Risk proxy": t,
+                            "Weight %": round(dec["w"][t] * frac * 100, 1),
+                            "Risk %": round(dec["rc_frac"][t] * frac * 100, 1),
+                            "Standalone volatility": f"{dec['standalone'][t]:.0%}",
+                        })
+                hdf = pd.DataFrame(hrows).sort_values("Risk %", ascending=False)
                 fig = px.bar(hdf.head(20), x="Risk %", y="Holding", orientation="h")
                 fig.update_layout(height=max(240, 26 * min(len(hdf), 20)),
                                   yaxis=dict(autorange="reversed"),

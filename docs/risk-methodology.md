@@ -207,8 +207,11 @@ $$ w^{(P)}_i =
 
 ### 6.2 Combining portfolios
 
-Each portfolio $P$ has a **volume** $V_P$ (`overlap.portfolio_volume`):
-$V_P=\sum_i u_i p_i$ for tracked, $V_P=\sum_i \text{weight}_i$ for research. Its
+Each portfolio $P$ has a **volume** $V_P$ (its size for combining books):
+$V_P=\sum_i u_i p_i$ (market value, `overlap.portfolio_volume`) for **tracked**;
+for **research** an explicit per-book **notional** $N_P$ (`store.notional_of`),
+because research weights are normalised to sum to 1 and so can't size books
+against each other. Both the Allocation and Risk tabs use this same basis. Its
 **volume share** of the combined book is $s_P = V_P / \sum_Q V_Q$, and a holding
 $i$ belonging to sleeve $P$ receives combined weight
 

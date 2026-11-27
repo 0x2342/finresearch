@@ -26,7 +26,9 @@ falls back to `Ticker`. This keeps a short-history swap (correct for valuation)
 from forcing a short risk window — set `RiskProxy` to a long-running tracker of the
 same index and the risk engine uses that series while value stays on the real
 holding. Existing single-`Ticker` books migrate automatically (blank `RiskProxy`),
-so behaviour is unchanged until you set one.
+so behaviour is unchanged until you set one. The default seeded book pre-fills
+`RiskProxy` with each registry proxy and leaves `Ticker` **blank** — so a seeded
+tracked book never values units on a proxy; you enter your actual held listing.
 
 Weights are **fractions** on a 0–1 scale (sum to 1), consistent across both modes —
 enter `0.6 / 0.4`, not `60 / 40` (any scale works; it's normalised either way).
