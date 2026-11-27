@@ -113,15 +113,19 @@ with st.sidebar:
             store.rename(active, nm)
             st.rerun()
         if len(slugs) > 1:
+            # Fresh checkbox key after each delete → it always re-arms unticked, so a
+            # delete can never be one click away on the next portfolio.
+            _dn = st.session_state.get("_del_n", 0)
             confirm_del = st.checkbox(
-                f"Confirm delete “{name_by_slug.get(active, active)}”", key="confirm_del",
+                f"Confirm delete “{name_by_slug.get(active, active)}”",
+                key=f"confirm_del::{_dn}",
                 help="Deletion is permanent — tick to enable the button.",
             )
             if st.button("Delete active", disabled=not confirm_del):
                 store.delete_portfolio(active)
                 for k in [k for k in st.session_state if "::" in k]:
                     st.session_state.pop(k, None)
-                st.session_state.pop("confirm_del", None)
+                st.session_state["_del_n"] = _dn + 1
                 st.rerun()
 
     period = st.selectbox("Price history", ["1y", "2y", "5y", "10y"], index=2)
