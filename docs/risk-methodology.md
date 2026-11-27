@@ -174,6 +174,18 @@ position that hedges the book can even have **negative** risk contribution.
 > `rc_frac[t] = rc_i / sigma` is the percentage contribution. In the Risk tab the
 > *Risk %* column is `rc_frac` and sums to 100%.
 
+**Index $i$ is a risk proxy, not a holding.** The covariance runs on each holding's
+`RiskProxy` (§1.1), so $\Sigma$ and the $\text{RC}_i$ above are indexed by *proxy*,
+not by holding. When two holdings share one proxy their weights are summed onto that
+proxy for the covariance (correct — they ride the *same* return series, so the model
+treats them as one asset: correlation 1, identical standalone volatility). The
+*Risk contribution by holding* table then splits that proxy's $\text{RC}$ back across
+its holdings **in proportion to their capital weight** on it ($\text{RC}_i \cdot
+w^{\text{hold}}/w^{\text{proxy}}$). This is a presentation of shared risk by weight,
+not an independent per-holding estimate — the proxy approach cannot distinguish two
+holdings that use the same series. The UI flags this when it occurs; give each
+holding its own ticker/proxy to separate them.
+
 ---
 
 ## 5. Diversification ratio

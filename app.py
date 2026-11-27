@@ -851,8 +851,11 @@ with tab_risk:
                 # underlying holdings in proportion to their weight on that proxy, so
                 # two holdings sharing a proxy each get an honest row (not one swallowed).
                 hrows = []
+                shared = False  # any proxy carrying more than one holding?
                 for t in dec["tickers"]:
                     members = tick_hold.get(t, {tick_name.get(t, t): tick_w.get(t, 0.0)})
+                    if len(members) > 1:
+                        shared = True
                     tw = tick_w.get(t, 0.0)
                     for hname, cw in members.items():
                         frac = (cw / tw) if tw else 0.0
@@ -869,7 +872,25 @@ with tab_risk:
                                   margin=dict(l=0, r=0, t=10, b=0),
                                   yaxis_title="", xaxis_title="% of total risk")
                 st.plotly_chart(fig, width="stretch")
-                st.dataframe(hdf, width="stretch", hide_index=True)
+                _shared_help = (
+                    "The covariance series used for this holding. When several holdings "
+                    "share one Risk proxy they ride the *same* return series — correlation "
+                    "1 and identical volatility by construction — so their combined risk is "
+                    "split back by capital weight, not estimated independently."
+                )
+                st.dataframe(
+                    hdf, width="stretch", hide_index=True,
+                    column_config={
+                        "Risk proxy": st.column_config.TextColumn("Risk proxy", help=_shared_help),
+                    },
+                )
+                if shared:
+                    st.caption(
+                        "⚠ Some holdings share a **Risk proxy** (same row value): the model "
+                        "treats them as one return series (perfectly correlated), and their "
+                        "risk is split by capital weight — not an independent per-holding "
+                        "estimate. Give each its own ticker/proxy to distinguish them."
+                    )
 
                 st.markdown(
                     "**Rolling annualized volatility** — how the single number above "
