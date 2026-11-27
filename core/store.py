@@ -21,8 +21,21 @@ import pandas as pd
 
 _DIR = os.path.join(os.path.dirname(__file__), "..", "data", "portfolios")
 _LEGACY = os.path.join(os.path.dirname(__file__), "..", "data", "portfolio.csv")
-COLUMNS = ["ISIN", "Name", "Ticker", "Weight", "Units"]
+COLUMNS = ["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"]
 MODES = ("research", "tracked")
+
+# Two-ticker model:
+#   Ticker    = the actual HELD listing — drives valuation, weights, allocation.
+#   RiskProxy = optional long-history index proxy — drives covariance/correlation;
+#               blank falls back to Ticker.
+# Existing single-Ticker CSVs migrate automatically: _read_csv adds the missing
+# RiskProxy column as blank, so risk still uses Ticker until a proxy is set.
+
+
+def risk_ticker(row) -> str:
+    """Series used for risk/correlation: RiskProxy if set, else the holding Ticker."""
+    proxy = str((row.get("RiskProxy") or "")).strip()
+    return proxy or str((row.get("Ticker") or "")).strip()
 
 
 def _index_file() -> str:
@@ -47,7 +60,7 @@ def _read_csv(path: str) -> pd.DataFrame | None:
         if c not in df.columns:
             df[c] = None
     df = df[COLUMNS]
-    for c in ("ISIN", "Name", "Ticker"):
+    for c in ("ISIN", "Name", "Ticker", "RiskProxy"):
         df[c] = df[c].where(df[c].notna(), "").astype(str)
     for c in ("Weight", "Units"):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)

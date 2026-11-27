@@ -19,6 +19,15 @@ Opens on http://localhost:8501.
 
 Multiple named portfolios, each with a **weight mode**:
 
+**Two tickers per holding.** `Ticker` is the **actual held listing** — it drives
+valuation (`Units × price`), tracked weights and allocation. `RiskProxy` is an
+**optional long-history index proxy** used only for covariance/correlation; blank
+falls back to `Ticker`. This keeps a short-history swap (correct for valuation)
+from forcing a short risk window — set `RiskProxy` to a long-running tracker of the
+same index and the risk engine uses that series while value stays on the real
+holding. Existing single-`Ticker` books migrate automatically (blank `RiskProxy`),
+so behaviour is unchanged until you set one.
+
 Weights are **fractions** on a 0–1 scale (sum to 1), consistent across both modes —
 enter `0.6 / 0.4`, not `60 / 40` (any scale works; it's normalised either way).
 
@@ -114,12 +123,15 @@ code, are in **[docs/risk-methodology.md](docs/risk-methodology.md)**.
 
 ## Price proxies & data coverage
 
-The `Ticker` for each holding is an **index proxy** for the correlation series,
-not necessarily the held listing — correlation depends on the index, not the
-wrapper, so any liquid long-history tracker of the same index works. Prefer
-Xetra (`.DE`) listings (better yfinance coverage than `.PA`/`.AS`) and avoid new
-/ short share classes: the correlation window is the *intersection* of all
-series, so one short series truncates everything.
+The **`RiskProxy`** for each holding is the index proxy for the risk/correlation
+series — correlation depends on the index, not the wrapper, so any liquid
+long-history tracker of the same index works; `Ticker` stays the actual held
+listing for valuation. Leave `RiskProxy` blank when the held listing already has
+enough history (risk then uses `Ticker`). Prefer Xetra (`.DE`) listings (better
+yfinance coverage than `.PA`/`.AS`) and avoid new / short share classes for the
+proxy: the correlation window is the *intersection* of all series, so one short
+series truncates everything. (Before the two-ticker split, one `Ticker` did both
+jobs — a proxy there silently corrupted valuation; that's now impossible.)
 
 The **Data coverage** panel in the Prices tab shows, per holding, whether it
 priced, its **currency** (see below), its **source** (yfinance = total-return /

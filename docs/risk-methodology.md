@@ -22,6 +22,11 @@ We model returns rather than price levels because prices trend and live on
 incomparable scales, whereas returns are (approximately) stationary and
 scale-free, so they can be pooled statistically and compared across instruments.
 
+The price series for covariance/correlation is each holding's **`RiskProxy`** (a
+long-history index tracker) when set, otherwise its `Ticker`; this is independent
+of the held listing used for valuation, so a short-history wrapper never shortens
+the risk window (see README, "Two tickers per holding").
+
 > **Code.** `rets = panel[tickers].pct_change().dropna(how="any")` — pandas
 > `pct_change` is exactly $P_t/P_{t-1}-1$. The `dropna(how="any")` inner-joins
 > the series, so the usable window is the **intersection** of all histories.
