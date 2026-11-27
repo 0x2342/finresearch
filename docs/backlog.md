@@ -3,13 +3,29 @@
 Deferred work, roughly by priority. The data-quality / risk-engine items came out
 of an external code review and are correctness issues, not just enhancements.
 
-**Status (2026-11-27).** All five external review rounds are closed — every
-correctness and data-quality item below is ✅, including R3.1 (the two-ticker
-model, merged `a143a05`). What remains open is **optional / future** only: the
-Acc-share-class proxy swap (noted under EUR/total-return), the historical
-stress-test stretch goal, the optional simple↔log return toggle, the iShares
-resolver catalog, and the Analytics items (constituent-level correlation,
-optimisation, auto-refresh).
+**Status (2026-11-27).** All six external review rounds are closed on correctness
+— every P1 item is ✅, including R3.1 (the two-ticker model, merged `a143a05`) and
+round-6's tracked-coverage / stale-price / ISIN-attribution fixes (`65ac3d1`), plus
+round-7's absolute price-freshness check. What remains open is **optional /
+future** only (below).
+
+## Open — optional / future
+
+- **Configurable stale-price policy.** Stale valuation prices are currently
+  flagged and carried forward (sensible default for a research tool; a universal
+  exclusion cutoff misfires on exchange holidays). Offer a per-use policy: *warn &
+  carry forward* (current) / *exclude stale from valuation* / *require manual
+  confirmation*. Thresholds ideally per-market/calendar rather than one global
+  number.
+- **Automated regression test suite.** The review scenarios (missing valuation
+  price, stale series, same-name distinct ISINs, two-ticker wiring, research
+  notionals in Risk, shared-proxy split) are covered by ad-hoc AppTest scripts run
+  during development but not committed. Add a `tests/` pytest suite so they run in
+  CI and guard against regressions.
+- Acc-share-class proxy swap (noted under EUR/total-return), the historical
+  stress-test stretch goal, the optional simple↔log return toggle, the iShares
+  resolver catalog, and the Analytics items (constituent-level correlation,
+  optimisation, auto-refresh).
 
 ## Round-3 review (2026-11-26) — data-model correctness
 

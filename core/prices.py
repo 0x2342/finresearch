@@ -154,21 +154,31 @@ def to_frequency(panel: pd.DataFrame, freq: str = "daily", max_stale: int = 5) -
     return panel
 
 
-def last_prices(panel, max_stale_days: int = 7) -> tuple[dict, dict]:
-    """Latest valid close per ticker for valuation, plus which are stale.
+def last_prices(panel, max_stale_days: int = 7, as_of=None) -> tuple[dict, dict, int]:
+    """Latest valid close per ticker for valuation, with two freshness signals.
 
-    Returns ``(prices, stale)``: `prices` maps ticker → last valid close; `stale`
-    maps ticker → calendar days since that close, for any ticker whose last
-    observation is older than `max_stale_days` (a delisted / halted / thin listing
-    whose price would otherwise be carried forward indefinitely). Valuation still
-    uses the last known price, but the UI can flag the stale ones rather than
+    Returns ``(prices, stale, data_age)``:
+      - `prices`: ticker → last valid close.
+      - `stale`:  ticker → calendar days since that close, for any ticker whose
+                  last observation lags the *panel's* latest by more than
+                  `max_stale_days` (**cross-sectional** — one listing falling behind
+                  the others, e.g. a halt/delisting).
+      - `data_age`: calendar days between the panel's newest observation and
+                  `as_of` (today, if given) — **absolute** freshness. Catches a
+                  wholesale-stale dataset (all providers down → cached data) that
+                  the cross-sectional check can't, since every series then lags by
+                  zero. 0 when `as_of` is None.
+
+    Valuation still uses the last known price; the UI flags staleness rather than
     silently distorting market value and weights.
     """
     prices_out: dict[str, float] = {}
     stale: dict[str, int] = {}
     if panel is None or getattr(panel, "empty", True):
-        return prices_out, stale
+        return prices_out, stale, 0
     end = panel.index[-1]
+    ref = pd.Timestamp(as_of) if as_of is not None else end
+    data_age = max(int((ref - end).days), 0)
     for c in panel.columns:
         s = panel[c].dropna()
         if s.empty:
@@ -177,7 +187,7 @@ def last_prices(panel, max_stale_days: int = 7) -> tuple[dict, dict]:
         age = (end - s.index[-1]).days
         if age > max_stale_days:
             stale[c] = age
-    return prices_out, stale
+    return prices_out, stale, data_age
 
 
 def _currency_meta(ticker: str) -> str | None:

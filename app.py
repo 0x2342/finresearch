@@ -24,6 +24,8 @@ MODE_LABEL = {
 }
 EMPTY = pd.DataFrame(columns=["ISIN", "Name", "Ticker", "RiskProxy", "Weight", "Units"])
 MIN_HISTORY_YEARS = 3  # covariance needs ~3y; shorter series get flagged
+TODAY = pd.Timestamp.now().normalize()   # for absolute price-freshness checks
+STALE_DATA_DAYS = 7  # newest obs older than this (vs today) ⇒ dataset wholesale-stale
 FREQ_PERIODS = {"daily": 252, "weekly": 52}      # periods/year for annualisation
 FREQ_WINDOWS = {"daily": (252, 756), "weekly": (52, 156)}  # rolling-vol 12m/36m
 TIER_LABEL = {
@@ -231,7 +233,7 @@ risk_tickers = tuple(dict.fromkeys(t for t in risk_of.values() if t))
 panel = cached_panel(risk_tickers, period) if risk_tickers else pd.DataFrame()
 hold_tickers = tuple(dict.fromkeys(t for t in ticker_of.values() if t))
 hold_panel = cached_panel(hold_tickers, period) if hold_tickers else pd.DataFrame()
-last, last_stale = prices.last_prices(hold_panel)  # valuation prices + stale flags
+last, last_stale, last_age = prices.last_prices(hold_panel, as_of=TODAY)
 
 weights = overlap.effective_weights(pf.to_dict("records"), mode, last)
 
@@ -555,6 +557,13 @@ with tab_value:
         )
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     st.metric("Portfolio value (priced units)", f"€ {total:,.2f}")
+    if last_age > STALE_DATA_DAYS:
+        st.warning(
+            f"⚠ **Every price is {last_age} days old** (newest observation "
+            f"{hold_panel.index[-1].date()}). Live providers were likely unreachable, "
+            "so this is cached data — the whole valuation is carried-forward. "
+            "Use **Refresh prices** once you're back online."
+        )
     _vstale = sorted(t for t in last_stale if any(str(r["Ticker"]).strip() == t for _, r in pf.iterrows()))
     if _vstale:
         st.warning(
@@ -611,7 +620,7 @@ with tab_alloc:
                     if str(r.get("Ticker", "")).strip()
                 })
                 pan = cached_panel(tks, period) if tks else pd.DataFrame()
-                lastd, _ = prices.last_prices(pan)
+                lastd, _, _ = prices.last_prices(pan, as_of=TODAY)
 
             if m == "research":
                 # Research weights only set allocation *within* a book and sum to 1,
@@ -732,7 +741,7 @@ with tab_risk:
             for rs in rrows.values() for r in rs if str(r.get("Ticker", "")).strip()
         })
         rhold_panel = cached_panel(rhold, period) if rhold else pd.DataFrame()
-        rlast, rlast_stale = prices.last_prices(rhold_panel)
+        rlast, rlast_stale, rlast_age = prices.last_prices(rhold_panel, as_of=TODAY)
         # Portfolio size for combining books: market value (tracked) or the explicit
         # per-book notional (research) — the SAME basis the Allocation tab uses, so
         # core/satellite risk attribution respects intended research sizes.
@@ -836,7 +845,12 @@ with tab_risk:
                         + ". Their risk series prices, but the held listing doesn't, so they "
                         "can't be weighted by market value."
                     )
-                if tracked and rlast_stale:
+                if tracked and rlast_age > STALE_DATA_DAYS:
+                    st.warning(
+                        f"⚠ All holding prices are {rlast_age} days old (cached data) — "
+                        "tracked weights and € figures are carried-forward."
+                    )
+                elif tracked and rlast_stale:
                     _rs = sorted(t for t in rlast_stale
                                  if any(str(r.get("Ticker", "")).strip() == t
                                         for s in rsel for r in rrows[s]))

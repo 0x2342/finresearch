@@ -278,8 +278,12 @@ $$ \sigma^{\text{€}}_{\text{ann}} = \sigma_{p,\text{ann}}\cdot C,
   actually resolve: the **RiskProxy** (covariance) always, and in **tracked** mode
   the held **Ticker** too (no valuation price → no $u_i p_i$ → dropped). The count
   therefore reports the two exclusion reasons separately — *no risk-series history*
-  vs *no valuation price (tracked)* — since they are different problems. A
-  carried-forward (stale) valuation price is flagged rather than silently used.
+  vs *no valuation price (tracked)* — since they are different problems. Stale
+  valuation prices are flagged (not excluded, since a universal cutoff would
+  misfire on exchange holidays) with two checks: **cross-sectional** (one listing
+  lagging the others in the panel) and **absolute** (`data_age` — the newest
+  observation's age vs today, which catches a wholesale-stale cache when every
+  provider is down and all series lag by zero).
   Two coverage numbers matter: **count** (priced $K$ of $N$ holdings, shown in
   both modes) and **value** (share of portfolio weight priced). In **research**
   mode the value figure is exactly `covered` and is shown ("Value covered", e.g.
