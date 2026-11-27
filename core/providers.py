@@ -87,7 +87,7 @@ def resolve(isin: str, tier: str, source_url: str | None) -> LookThrough:
             return fs
         return LookThrough(source="none", note=err)
     if tier == "name":
-        return LookThrough(source="none")
+        return LookThrough(source="none", note="no source URL configured")
     fs = _factsheet(isin)
     return fs if fs is not None else LookThrough(source="none")
 

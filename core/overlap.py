@@ -87,10 +87,17 @@ def effective_weights(rows, mode: str, last_prices: dict[str, float]) -> dict[st
             units = _to_float(r.get("Units"))
             price = last_prices.get(r.get("Ticker"))
             if price and units:
-                mv[r["ISIN"]] = units * float(price)
+                # Accumulate: one security can be held across several rows (lots).
+                # Summing keeps every lot instead of letting the last row with a
+                # given ISIN silently overwrite the earlier ones.
+                mv[r["ISIN"]] = mv.get(r["ISIN"], 0.0) + units * float(price)
         return normalise(mv)
-    manual = {r["ISIN"]: _to_float(r.get("Weight")) for r in rows}
-    return normalise({k: v for k, v in manual.items() if v > 0})
+    manual: dict[str, float] = {}
+    for r in rows:
+        w = _to_float(r.get("Weight"))
+        if w > 0:
+            manual[r["ISIN"]] = manual.get(r["ISIN"], 0.0) + w  # aggregate duplicate ISINs
+    return normalise(manual)
 
 
 def unpriced_positions(rows, mode: str, last_prices: dict[str, float]) -> list[str]:

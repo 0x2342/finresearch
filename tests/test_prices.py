@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from core import prices
 
@@ -64,12 +63,7 @@ def test_last_prices_empty_panel():
     assert prices.last_prices(pd.DataFrame()) == ({}, {}, 0)
 
 
-# ---- Known bug, captured as an executable spec (review #9) ------------------- #
-@pytest.mark.xfail(
-    reason="review #9: last_prices reads panel.index[-1] assuming a sorted index; "
-    "an unsorted panel yields a wrong 'latest' observation and data_age.",
-    strict=True,
-)
+# ---- Review #9 (fixed): last_prices sorts before reading the newest obs -------- #
 def test_last_prices_handles_unsorted_index():
     idx = pd.bdate_range("2026-01-01", periods=10)
     df = pd.DataFrame({"A.DE": np.arange(10.0)}, index=idx)

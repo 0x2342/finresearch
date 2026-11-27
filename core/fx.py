@@ -103,4 +103,9 @@ def to_eur(price: pd.Series, ccy: str | None, fx: pd.Series | None) -> tuple[pd.
         return price, False
     eur = eur.rename(price.name)
     eur.attrs = dict(price.attrs)
+    if len(eur) < len(price):
+        # The FX cross starts after the price series, so the pre-FX rows were
+        # dropped — the converted series is shorter and would silently bind the
+        # covariance window. Flag it (like staleness) rather than back-filling FX.
+        eur.attrs["fx_truncated"] = True
     return eur, True

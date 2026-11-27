@@ -7,10 +7,10 @@ of an external code review and are correctness issues, not just enhancements.
 — every P1 item is ✅, including R3.1 (the two-ticker model, merged `a143a05`),
 round-6's tracked-coverage / stale-price / ISIN-attribution fixes (`65ac3d1`), and
 round-7's absolute price-freshness check (`7d93b10`). A committed `tests/` pytest
-suite now pins that behaviour (76 tests). A round-8 review by a second reviewer
-(robustness / ops / security focus) is triaged below: four correctness findings are
-captured as `strict` xfail specs in the suite (executable TODOs), the rest are
-optional / future.
+suite now pins that behaviour (80 tests). A round-8 review by a second reviewer
+(robustness / ops / security focus) is triaged below: its four correctness findings
+are now fixed (the specs are live and green), and the robustness/ops items are being
+worked or left optional / future.
 
 ## Open — optional / future
 
@@ -21,13 +21,13 @@ optional / future.
   confirmation*. Thresholds ideally per-market/calendar rather than one global
   number.
 - **Automated regression test suite.** ✅ **Done.** Committed `tests/` pytest
-  suite (76 passing + 4 `strict` xfail specs) covering risk decomposition, FX
+  suite (80 passing) covering risk decomposition, FX
   resolution/conversion, overlap + per-mode effective weights, store persistence +
   two-ticker model, look-through accumulation, provider tiers, price freshness, and
   the seeded-vector transcription invariants. Pure/offline (no network). Run with
-  `pip install -r requirements-dev.txt && pytest`. The four xfails are the round-8
-  correctness findings below, captured as executable specs that flip to green when
-  fixed.
+  `pip install -r requirements-dev.txt && pytest`. The round-8 correctness findings
+  below were captured as strict xfail specs, then fixed — the specs are now live and
+  green.
 - Acc-share-class proxy swap (noted under EUR/total-return), the historical
   stress-test stretch goal, the optional simple↔log return toggle, the iShares
   resolver catalog, and the Analytics items (constituent-level correlation,
@@ -39,24 +39,26 @@ A different reviewer, robustness/security-focused (complements the quant rounds)
 Verified in-code; the four correctness items are pinned as `strict` xfail specs in
 the test suite. None change the risk maths — they're silent-failure and ops gaps.
 
-### Correctness — captured as xfail specs (flip to green on fix)
-- **#7 Duplicate ISINs collapse.** All row→value dicts (`effective_weights`,
-  look-through, `resolve_all`) are ISIN-keyed, so a second row with the same ISIN
-  overwrites the first — valuation/weights/risk silently lose it. *Recommended fix:
-  aggregate duplicate-ISIN lots (sum Units / Weight) rather than warn-and-drop —
-  multiple purchase lots of one security is a real tracked-book case.* Spec:
-  `test_overlap.py::test_duplicate_isin_lots_aggregate_tracked`.
-- **#8 `fx.to_eur` truncates history.** When the FX cross starts later than the
-  price series, the pre-FX rows go NaN and are dropped, silently shortening the
-  converted series — which then binds the whole covariance window. *Fix: flag the
-  truncation (`attrs`) like we flag staleness.* Spec:
-  `test_fx.py::test_to_eur_short_fx_does_not_silently_truncate`.
-- **#9 `last_prices` assumes a sorted index.** Reads `panel.index[-1]` for the
-  newest obs / `data_age`; an unsorted panel breaks both. *Fix: one `sort_index()`
-  guard.* Spec: `test_prices.py::test_last_prices_handles_unsorted_index`.
-- **#18 Resolver note blank when `name` tier has no URL.** `resolve(..., "name",
-  None)` returns `note=None` → blank provenance Note. *Fix: `note="no source URL
-  configured"`.* Spec: `test_providers.py::test_name_tier_without_url_explains_itself`.
+### Correctness — ✅ fixed (specs live & green)
+- **#7 Duplicate ISINs collapse.** ✅ All row→value dicts were ISIN-keyed, so a
+  second row with the same ISIN overwrote the first — valuation/weights/risk
+  silently lost it. Fixed: `overlap.effective_weights` now **aggregates** lots (sums
+  Units × price / Weight) in both modes, since multiple purchase lots of one security
+  is a real tracked-book case. Spec:
+  `test_overlap.py::test_duplicate_isin_lots_aggregate_tracked`. *(A sidebar
+  duplicate-ISIN warning — for an accidental same-ISIN/different-ticker typo — is a
+  separate optional nicety; the weight maths is now correct regardless.)*
+- **#8 `fx.to_eur` truncates history.** ✅ When the FX cross started later than the
+  price series the pre-FX rows went NaN and were dropped, silently shortening the
+  converted series (which then bound the covariance window). Fixed: the truncation is
+  flagged in `attrs["fx_truncated"]` (like staleness) rather than back-filling FX.
+  Spec: `test_fx.py::test_to_eur_short_fx_does_not_silently_truncate`.
+- **#9 `last_prices` assumes a sorted index.** ✅ Fixed with a `sort_index()` guard
+  before reading the newest obs / `data_age`. Spec:
+  `test_prices.py::test_last_prices_handles_unsorted_index`.
+- **#18 Resolver note blank when `name` tier has no URL.** ✅ Fixed:
+  `note="no source URL configured"`. Spec:
+  `test_providers.py::test_name_tier_without_url_explains_itself`.
 
 ### Robustness / ops — open, pending triage
 - **#11 Silent write failures.** `save_portfolio` / `save_sources` / `prices._save`

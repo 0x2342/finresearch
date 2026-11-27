@@ -176,6 +176,8 @@ def last_prices(panel, max_stale_days: int = 7, as_of=None) -> tuple[dict, dict,
     stale: dict[str, int] = {}
     if panel is None or getattr(panel, "empty", True):
         return prices_out, stale, 0
+    if not panel.index.is_monotonic_increasing:
+        panel = panel.sort_index()  # newest-obs / data_age rely on a sorted index
     end = panel.index[-1]
     ref = pd.Timestamp(as_of) if as_of is not None else end
     data_age = max(int((ref - end).days), 0)

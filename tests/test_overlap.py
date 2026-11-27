@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 from core import overlap
 
 
@@ -92,12 +90,7 @@ def test_portfolio_volume_tracked_is_market_value():
     assert math.isclose(overlap.portfolio_volume(rows, "tracked", {"X.DE": 20.0}), 200.0)
 
 
-# ---- Known bug, captured as an executable spec (review #7) ------------------- #
-@pytest.mark.xfail(
-    reason="review #7: duplicate ISINs collapse (second row overwrites the first) "
-    "instead of aggregating the lots, understating the holding's weight.",
-    strict=True,
-)
+# ---- Review #7 (fixed): duplicate-ISIN lots aggregate instead of overwriting --- #
 def test_duplicate_isin_lots_aggregate_tracked():
     # same security bought in two lots, plus a second holding
     rows = [

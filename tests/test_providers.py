@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 from core import providers
 
 # ISINs present in the seeded exposures (offline factsheet tier).
@@ -62,12 +60,7 @@ def test_name_level_success_path(monkeypatch):
     assert lt.n_names == 2
 
 
-# ---- Known bug, captured as an executable spec (review #18) ------------------ #
-@pytest.mark.xfail(
-    reason="review #18: tier='name' with no source URL returns note=None, so the "
-    "provenance table shows a blank Note instead of 'no source URL configured'.",
-    strict=True,
-)
+# ---- Review #18 (fixed): name tier with no URL explains the blank provenance --- #
 def test_name_tier_without_url_explains_itself():
     lt = providers.resolve(ISIN_FULL, "name", None)
     assert lt.note == "no source URL configured"

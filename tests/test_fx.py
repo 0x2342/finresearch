@@ -4,7 +4,6 @@ from __future__ import annotations
 import math
 
 import pandas as pd
-import pytest
 
 from core import fx
 
@@ -84,12 +83,7 @@ def test_to_eur_applies_pence_scale():
     assert math.isclose(out.iloc[0], 5.75)
 
 
-# ---- Known bug, captured as an executable spec (review #8) ------------------- #
-@pytest.mark.xfail(
-    reason="review #8: to_eur truncates history to the FX window instead of "
-    "flagging it; the shortened series then silently binds the covariance window.",
-    strict=True,
-)
+# ---- Review #8 (fixed): short FX cross flags truncation instead of hiding it -- #
 def test_to_eur_short_fx_does_not_silently_truncate():
     idx = pd.date_range("2026-01-01", periods=10)
     price = pd.Series(range(100, 110), index=idx, dtype=float, name="AAPL")
